@@ -1347,7 +1347,19 @@ For questions or clarifications, please refer to the codebase or contact the dev
 
 ---
 
-**Document Version:** 1.0  
+**Document Version:** 2.0  
 **Last Updated:** December 2025  
-**Status:** Final
+**Status:** Updated with streaming, source citations, and latest features
+
+### Recent Updates (v2.0)
+- ✅ Implemented token-by-token streaming responses via Server-Sent Events (SSE)
+- ✅ Added stop/cancel streaming functionality with AbortController
+- ✅ Added regenerate response feature
+- ✅ Added message timestamps with relative time display
+- ✅ Enhanced source citations with clickable links, document metadata, and deduplication
+- ✅ Migrated image captioning from HuggingFace BLIP to OpenAI Vision API
+- ✅ Improved audio transcription with explicit filename handling and better error handling
+- ✅ Enhanced URL scraping with better content extraction and metadata creation
+- ✅ Improved error handling and user feedback throughout the system
+- ✅ Added auto-scroll improvements during streaming
 
