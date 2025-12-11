@@ -137,16 +137,34 @@ async function blipCaptionImage(localPath){
     console.warn('HF_API_TOKEN not set, cannot generate image captions');
     return null; // Return null instead of error message to avoid storing error text
   }
-  const endpoint = `https://router.huggingface.co/models/${HF_BLIP_MODEL}`;
+  // Try router endpoint first, fallback to api-inference
+  let endpoint = `https://router.huggingface.co/inference/models/${HF_BLIP_MODEL}`;
   const imageData = fs.readFileSync(localPath);
   try{
-    const resp = await axios.post(endpoint, imageData, {
-      headers: {
-        "Authorization": `Bearer ${HF_API_TOKEN}`,
-        "Content-Type": "application/octet-stream"
-      },
-      timeout: 30000 // 30 second timeout for model inference
-    });
+    let resp;
+    try {
+      resp = await axios.post(endpoint, imageData, {
+        headers: {
+          "Authorization": `Bearer ${HF_API_TOKEN}`,
+          "Content-Type": "application/octet-stream"
+        },
+        timeout: 30000
+      });
+    } catch (firstError) {
+      // If router fails, try api-inference endpoint
+      if (firstError.response?.status === 404 || firstError.response?.status === 410) {
+        endpoint = `https://api-inference.huggingface.co/models/${HF_BLIP_MODEL}`;
+        resp = await axios.post(endpoint, imageData, {
+          headers: {
+            "Authorization": `Bearer ${HF_API_TOKEN}`,
+            "Content-Type": "application/octet-stream"
+          },
+          timeout: 30000
+        });
+      } else {
+        throw firstError;
+      }
+    }
     
     // Handle different response formats
     if (Array.isArray(resp.data) && resp.data.length > 0) {

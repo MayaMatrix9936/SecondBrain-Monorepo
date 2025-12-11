@@ -158,20 +158,39 @@ async function blipCaptionImage(localPath){
   }
   
   console.log('Attempting image captioning with HF_API_TOKEN:', HF_API_TOKEN ? 'SET' : 'NOT SET');
-  const endpoint = `https://router.huggingface.co/models/${HF_BLIP_MODEL}`;
+  // Try router endpoint first, fallback to api-inference
+  let endpoint = `https://router.huggingface.co/inference/models/${HF_BLIP_MODEL}`;
   console.log('Using endpoint:', endpoint);
   
   const imageData = fs.readFileSync(localPath);
   console.log('Image file size:', imageData.length, 'bytes');
   
   try{
-    const resp = await axios.post(endpoint, imageData, {
-      headers: {
-        "Authorization": `Bearer ${HF_API_TOKEN}`,
-        "Content-Type": "application/octet-stream"
-      },
-      timeout: 30000 // 30 second timeout for model inference
-    });
+    let resp;
+    try {
+      resp = await axios.post(endpoint, imageData, {
+        headers: {
+          "Authorization": `Bearer ${HF_API_TOKEN}`,
+          "Content-Type": "application/octet-stream"
+        },
+        timeout: 30000
+      });
+    } catch (firstError) {
+      // If router fails, try api-inference endpoint
+      if (firstError.response?.status === 404 || firstError.response?.status === 410) {
+        console.log('Router endpoint failed, trying api-inference endpoint...');
+        endpoint = `https://api-inference.huggingface.co/models/${HF_BLIP_MODEL}`;
+        resp = await axios.post(endpoint, imageData, {
+          headers: {
+            "Authorization": `Bearer ${HF_API_TOKEN}`,
+            "Content-Type": "application/octet-stream"
+          },
+          timeout: 30000
+        });
+      } else {
+        throw firstError;
+      }
+    }
     
     console.log('BLIP API response status:', resp.status);
     console.log('BLIP API response data:', JSON.stringify(resp.data).substring(0, 200));
@@ -204,7 +223,10 @@ async function blipCaptionImage(localPath){
         await new Promise(resolve => setTimeout(resolve, 10000));
         // Retry once
         console.log('Retrying image captioning...');
-        const retryResp = await axios.post(endpoint, imageData, {
+        const retryEndpoint = endpoint.includes('router') 
+          ? `https://api-inference.huggingface.co/models/${HF_BLIP_MODEL}`
+          : endpoint;
+        const retryResp = await axios.post(retryEndpoint, imageData, {
           headers: {
             "Authorization": `Bearer ${HF_API_TOKEN}`,
             "Content-Type": "application/octet-stream"
