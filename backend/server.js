@@ -239,6 +239,12 @@ async function blipCaptionImage(localPath){
       return resp.data.generated_text;
     }
     
+    // Handle pipeline response format (might be different structure or string)
+    if (resp.data && typeof resp.data === 'string') {
+      console.log('Caption generated (string response):', resp.data);
+      return resp.data;
+    }
+    
     // If model is loading, wait and retry
     if (resp.data.error) {
       console.log('BLIP API error response:', resp.data.error);
