@@ -19,15 +19,28 @@ export default function Chat() {
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const messagesEndRef = useRef(null);
+  const abortControllerRef = useRef(null);
   const { showSuccess, showError } = useToast();
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (force = false) => {
+    if (force || messages.length > 0) {
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: force ? 'auto' : 'smooth' });
+      }, 100);
+    }
   };
 
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Auto-scroll during streaming
+  useEffect(() => {
+    const streamingMessage = messages.find(m => m.streaming);
+    if (streamingMessage) {
+      scrollToBottom(true);
+    }
+  }, [messages.map(m => m.content).join('')]);
 
   useEffect(() => {
     loadConversations();
@@ -133,14 +146,52 @@ export default function Chat() {
     conv.title.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleSend = async (e) => {
-    e.preventDefault();
-    if (!input.trim() || loading) return;
+  const stopStreaming = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setLoading(false);
+    setMessages(prev => {
+      const updated = [...prev];
+      const lastMsg = updated[updated.length - 1];
+      if (lastMsg && lastMsg.streaming) {
+        lastMsg.streaming = false;
+      }
+      return updated;
+    });
+  };
 
-    const userMessage = { role: 'user', content: input };
+  const regenerateResponse = async () => {
+    if (messages.length < 2) return;
+    const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
+    if (!lastUserMessage) return;
+    
+    // Remove last assistant message
+    const messagesWithoutLast = messages.slice(0, -1);
+    setMessages(messagesWithoutLast);
+    setInput(lastUserMessage.content);
+    
+    // Trigger new response
+    setTimeout(() => {
+      const fakeEvent = { preventDefault: () => {} };
+      handleSend(fakeEvent, lastUserMessage.content);
+    }, 100);
+  };
+
+  const handleSend = async (e, queryOverride = null) => {
+    e?.preventDefault();
+    const queryText = queryOverride || input.trim();
+    if (!queryText || loading) return;
+
+    const userMessage = { 
+      role: 'user', 
+      content: queryText,
+      timestamp: new Date().toISOString()
+    };
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
-    setInput('');
+    if (!queryOverride) setInput('');
     setLoading(true);
 
     // Create placeholder for streaming response
@@ -148,10 +199,14 @@ export default function Chat() {
       role: 'assistant',
       content: '',
       sources: [],
-      streaming: true
+      streaming: true,
+      timestamp: new Date().toISOString()
     };
     const messagesWithPlaceholder = [...newMessages, assistantMessage];
     setMessages(messagesWithPlaceholder);
+
+    // Create abort controller for cancellation
+    abortControllerRef.current = new AbortController();
 
     try {
       // Use streaming by default
@@ -163,10 +218,11 @@ export default function Chat() {
         },
         body: JSON.stringify({
           userId: 'demo-user',
-          query: input,
+          query: queryText,
           k: 6,
           stream: true
-        })
+        }),
+        signal: abortControllerRef.current.signal
       });
 
       if (!response.ok) {
@@ -233,26 +289,90 @@ export default function Chat() {
       const finalMessages = [...newMessages, {
         role: 'assistant',
         content: fullContent,
-        sources: sources
+        sources: sources,
+        timestamp: new Date().toISOString()
       }];
       setMessages(finalMessages);
       
       // Save conversation after each exchange
       await saveConversation(finalMessages);
+      abortControllerRef.current = null;
     } catch (error) {
-      console.error('Query error:', error);
-      showError('Failed to get response. Please try again.');
-      const errorMessage = {
-        role: 'assistant',
-        content: 'Sorry, I encountered an error. Please try again.',
-        error: true
-      };
-      const updatedMessages = [...newMessages, errorMessage];
-      setMessages(updatedMessages);
-      await saveConversation(updatedMessages);
+      if (error.name === 'AbortError') {
+        // User cancelled, update message to show it was stopped
+        setMessages(prev => {
+          const updated = [...prev];
+          const lastMsg = updated[updated.length - 1];
+          if (lastMsg && lastMsg.streaming) {
+            lastMsg.streaming = false;
+            lastMsg.content = lastMsg.content || '(Response stopped)';
+            lastMsg.timestamp = new Date().toISOString();
+          }
+          return updated;
+        });
+      } else {
+        console.error('Query error:', error);
+        showError('Failed to get response. Please try again.');
+        const errorMessage = {
+          role: 'assistant',
+          content: 'Sorry, I encountered an error. Please try again.',
+          error: true,
+          timestamp: new Date().toISOString()
+        };
+        const updatedMessages = [...newMessages, errorMessage];
+        setMessages(updatedMessages);
+        await saveConversation(updatedMessages);
+      }
     } finally {
       setLoading(false);
+      abortControllerRef.current = null;
     }
+  };
+
+  // Simple markdown renderer for code blocks and formatting
+  const renderMarkdown = (text) => {
+    if (!text) return '';
+    
+    // Escape HTML first
+    let html = text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+    
+    // Code blocks
+    html = html.replace(/```(\w+)?\n([\s\S]*?)```/g, (match, lang, code) => {
+      return `<pre class="bg-gray-100 dark:bg-gray-800 p-3 rounded-lg overflow-x-auto my-2"><code class="text-sm">${code.trim()}</code></pre>`;
+    });
+    
+    // Inline code
+    html = html.replace(/`([^`]+)`/g, '<code class="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-sm font-mono">$1</code>');
+    
+    // Bold
+    html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+    
+    // Italic
+    html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+    
+    // Links
+    html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:underline">$1</a>');
+    
+    // Line breaks
+    html = html.replace(/\n/g, '<br />');
+    
+    return html;
+  };
+
+  const formatTimestamp = (timestamp) => {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    
+    if (diffMins < 1) return 'Just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h ago`;
+    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
   // Keyboard shortcuts
@@ -455,12 +575,19 @@ export default function Chat() {
           
           {loading && (
             <div className="flex justify-start">
-              <div className="bg-white dark:bg-gray-800 rounded-2xl px-5 py-3 border border-gray-200 dark:border-gray-700 shadow-sm">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl px-5 py-3 border border-gray-200 dark:border-gray-700 shadow-sm flex items-center gap-3">
                 <div className="flex space-x-2">
                   <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
                   <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
                   <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
                 </div>
+                <button
+                  onClick={stopStreaming}
+                  className="text-xs px-3 py-1 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors"
+                  title="Stop generating"
+                >
+                  Stop
+                </button>
               </div>
             </div>
           )}
