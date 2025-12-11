@@ -4,6 +4,7 @@ import { useToast } from '../contexts/ToastContext';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 console.log('API_URL:', API_URL); // Debug: Check what URL is being used
+console.log('VITE_API_URL env:', import.meta.env.VITE_API_URL); // Debug: Check if env var exists
 
 export default function Uploader({ onUploadSuccess }) {
   const [uploadType, setUploadType] = useState('file');
