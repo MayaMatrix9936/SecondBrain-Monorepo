@@ -409,10 +409,44 @@ export default function Chat() {
                   </button>
                 </div>
                 {msg.sources && msg.sources.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-gray-300 border-opacity-30">
-                    <p className="text-xs opacity-75 font-medium">
+                  <div className="mt-3 pt-3 border-t border-gray-300 dark:border-gray-600 border-opacity-30">
+                    <p className="text-xs opacity-75 font-medium mb-2">
                       📎 {msg.sources.length} source{msg.sources.length > 1 ? 's' : ''} referenced
                     </p>
+                    <div className="flex flex-wrap gap-2">
+                      {msg.sources.map((source, idx) => {
+                        const displayName = source.filename || 
+                                           (source.originalUri && source.originalUri !== 'inline' 
+                                             ? (source.originalUri.startsWith('http') 
+                                                ? new URL(source.originalUri).hostname 
+                                                : source.originalUri.split('/').pop())
+                                             : `Document ${idx + 1}`);
+                        const isUrl = source.originalUri && source.originalUri.startsWith('http');
+                        
+                        return (
+                          <div
+                            key={source.chunkId || idx}
+                            className="text-xs px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                          >
+                            {isUrl ? (
+                              <a
+                                href={source.originalUri}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-blue-600 dark:text-blue-400 hover:underline"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {displayName}
+                              </a>
+                            ) : (
+                              <span className="cursor-default" title={`Source ${idx + 1} (Score: ${source.score?.toFixed(3) || 'N/A'})`}>
+                                {displayName}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
