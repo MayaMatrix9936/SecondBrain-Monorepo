@@ -1,8 +1,7 @@
 # SecondBrain: Comprehensive System Design Document
 
-**Version:** 2.0  
+**Version:** 1.0  
 **Date:** December 2025  
-**Last Updated:** December 2025  
 **Author:** SecondBrain Development Team
 
 ---
@@ -37,11 +36,12 @@ SecondBrain is a multi-modal personal knowledge management system that enables u
 - **Semantic Search**: Vector-based retrieval using OpenAI embeddings (text-embedding-3-small)
 - **Temporal Queries**: Natural language time-based filtering (e.g., "last week", "last month", "last Tuesday")
 - **Hybrid Retrieval**: Combines semantic similarity (85%), keyword matching (15%), and recency scoring (10%)
-- **Real-time Chat Interface**: Interactive Q&A with token-by-token streaming responses via Server-Sent Events (SSE)
-- **Advanced Chat Features**: Stop streaming, regenerate responses, message timestamps, source citations with clickable links
+- **Real-time Chat Interface**: Interactive Q&A with token-by-token streaming responses
+- **Streaming Features**: Stop/cancel generation, regenerate responses, message timestamps
+- **Source Citations**: Clickable source references with document metadata and deduplication
 - **User Isolation**: Per-user data separation for privacy and scalability
 - **Async Processing**: Background job processing for efficient ingestion
-- **Error Handling**: Graceful error handling with informative user feedback for failed processing
+- **Error Handling**: Graceful error handling with informative user feedback
 
 ---
 
@@ -561,39 +561,18 @@ final_score = 0.85 * semantic_score
 ### 7.3 RAG (Retrieval-Augmented Generation)
 
 **Context Building:**
-1. Retrieve top-k chunks (default: 6, retrieves 3x for scoring)
-2. Apply hybrid scoring (semantic + keyword + recency)
-3. Filter out error chunks and apply temporal filters
-4. Deduplicate sources by document (keep highest scoring reference per document)
-5. Combine into context window
-6. Add system prompt with instructions
-7. Send to LLM (gpt-4o-mini) with streaming support
-8. Return answer with source citations (including document metadata)
-
-**Streaming Implementation:**
-- Uses Server-Sent Events (SSE) for real-time token delivery
-- Backend streams OpenAI response token-by-token via `openaiChatStream()` generator
-- Frontend receives chunks via `ReadableStream` API
-- Updates UI progressively as tokens arrive (word-by-word display)
-- Supports cancellation via `AbortController` (stop button)
-- Message types: `sources` (sent first), `chunk` (streamed), `done` (completion), `error` (errors)
-
-**Source Citations:**
-- Includes document metadata (filename, originalUri, sourceType)
-- Deduplicated by document ID (each document appears once, highest score kept)
-- Clickable links for URLs (open in new tab)
-- Visual badges with document names
-- Source count display
+1. Retrieve top-k chunks (default: 5)
+2. Combine into context window
+3. Add system prompt with instructions
+4. Send to LLM (gpt-4o-mini)
+5. Return answer with source citations
 
 **Prompt Template:**
 ```
 You are a helpful assistant. Answer the user's question based ONLY on the provided context.
 
 Context:
-Source 1 (doc:{docId}, score:{score}):
 [Chunk 1]
----
-Source 2 (doc:{docId}, score:{score}):
 [Chunk 2]
 ...
 
@@ -617,23 +596,29 @@ Answer:
 - **Formats**: MP3, M4A, WAV, MP4
 - **Service**: OpenAI Whisper API
 - **Endpoint**: `/v1/audio/transcriptions`
+- **Model**: whisper-1
+- **Features**: 
+  - Explicit filename handling for format detection
+  - File buffer upload with proper content-type
+  - 5-minute timeout for long audio files
+  - Detailed error logging and handling
 - **Output**: Transcript text
 
 #### Images
 - **Formats**: PNG, JPG, JPEG, WEBP
-- **Service**: HuggingFace BLIP model
-- **Model**: `Salesforce/blip-image-captioning-large`
+- **Service**: OpenAI Vision API
+- **Model**: gpt-4o-mini (Vision)
+- **Features**:
+  - Base64 image encoding
+  - Detailed image descriptions including text, objects, people, settings
+  - 60-second timeout
+  - Graceful fallback if captioning fails
 - **Output**: Descriptive caption text
 
 #### Web URLs
 - **Parser**: `cheerio` (server-side HTML parsing)
-- **Extraction**: Text from multiple elements (`<p>`, `<h1-h6>`, `<article>`, etc.)
-- **Features**: 
-  - Authentication detection (identifies login-required pages)
-  - YouTube URL detection and metadata creation
-  - Proper headers to avoid blocking
-  - Metadata chunk creation for failed URLs (ensures searchability)
-- **Output**: Scraped article text or metadata for searchable URLs
+- **Extraction**: Text from `<p>` tags
+- **Output**: Scraped article text
 
 #### Plain Text
 - **Processing**: Direct ingestion
@@ -653,13 +638,10 @@ Input (File/Text/URL)
          ├──► PDF → pdf-parse → Text
          │
          ├──► Audio → Whisper API → Transcript
-         │    (with filename handling, error recovery)
          │
-         ├──► Image → OpenAI Vision API → Caption
-         │    (with base64 encoding, detailed descriptions)
+         ├──► Image → BLIP API → Caption
          │
          ├──► URL → Cheerio → Scraped Text
-         │    (with auth detection, metadata fallback)
          │
          └──► Text → Direct
          │
@@ -717,38 +699,39 @@ App
 
 ### 9.3 Key Features
 
-1. **Chat Interface**
-   - Real-time streaming responses (token-by-token via SSE)
-   - Stop/Cancel streaming button during generation
-   - Regenerate response button (hover on last AI message)
-   - Message timestamps with relative time display ("Just now", "5m ago", "2h ago")
-   - Copy message button (hover to reveal)
-   - Source citations with clickable document links
-   - Auto-scroll during streaming
-   - Input disabled during response generation (prevents multiple submissions)
-   - Conversation history with search
-   - New conversation creation
-
-2. **Dark Mode**
+1. **Dark Mode**
    - System preference detection
    - Manual toggle
    - Persistent storage
 
+2. **Chat Interface with Streaming**
+   - **Token-by-token streaming**: Real-time response generation using Server-Sent Events (SSE)
+   - **Stop/Cancel**: Ability to cancel ongoing response generation
+   - **Regenerate**: Regenerate last AI response with one click
+   - **Message Timestamps**: Relative timestamps (e.g., "5m ago", "2h ago")
+   - **Source Citations**: Clickable source references with document names
+   - **Source Deduplication**: Each document appears only once in source list
+   - **Auto-scroll**: Smooth scrolling during streaming
+   - **Input disabled during generation**: Prevents multiple simultaneous requests
+
 3. **Chat History**
-   - Conversation list
-   - Search functionality
+   - Conversation list with search
    - Delete conversations
+   - Load previous conversations
+   - Conversation titles auto-generated
 
 4. **Document Management**
-   - List all documents
+   - List all documents with metadata
    - Search documents
    - Delete documents
-   - Show processing status
+   - Show processing status (processed/pending)
+   - Document type badges (PDF, audio, image, URL, text)
 
 5. **Upload Interface**
    - Drag & drop support
-   - Multiple input types
+   - Multiple input types (file, text, URL)
    - Progress feedback
+   - Error handling with user-friendly messages
 
 ---
 
@@ -782,36 +765,21 @@ Content-Type: application/json
 Body:
 {
   "query": "What did I learn last week?",
-  "userId": "demo-user" (optional, default: "demo-user"),
-  "k": 6 (optional, default: 6),
-  "from": "ISO-8601 date" (optional),
-  "to": "ISO-8601 date" (optional),
-  "stream": true (optional, enables streaming)
+  "conversationId": "uuid" (optional),
+  "k": 5 (optional, default: 5)
 }
 
-Response (Non-streaming):
+Response:
 {
   "answer": "Based on your documents...",
   "sources": [
     {
       "docId": "uuid",
       "chunkId": "uuid",
-      "score": 0.95,
-      "filename": "document.pdf",
-      "originalUri": "/app/uploads/file.pdf",
-      "sourceType": "pdf"
+      "text": "relevant chunk..."
     }
   ]
 }
-
-Response (Streaming):
-Content-Type: text/event-stream
-
-data: {"type": "sources", "data": [{"docId": "...", "filename": "...", ...}]}
-data: {"type": "chunk", "data": "token"}
-data: {"type": "chunk", "data": " token"}
-...
-data: {"type": "done", "data": "Full response text"}
 ```
 
 #### Document Management
@@ -1036,9 +1004,9 @@ services:
 ### 14.4 External Services
 
 - **Embeddings**: OpenAI text-embedding-3-small
-- **Chat**: OpenAI gpt-4o-mini
-- **Audio**: OpenAI Whisper
-- **Images**: HuggingFace BLIP
+- **Chat**: OpenAI gpt-4o-mini (with streaming support)
+- **Audio**: OpenAI Whisper API (whisper-1 model)
+- **Images**: OpenAI Vision API (gpt-4o-mini Vision)
 
 ---
 
@@ -1353,61 +1321,7 @@ For questions or clarifications, please refer to the codebase or contact the dev
 
 ---
 
-**Document Version:** 2.0  
+**Document Version:** 1.0  
 **Last Updated:** December 2025  
 **Status:** Final
-
----
-
-## Recent Updates (Version 2.0)
-
-### Streaming Responses Implementation
-- **Token-by-token streaming** via Server-Sent Events (SSE)
-- Real-time UI updates as tokens arrive from OpenAI
-- **Stop/Cancel functionality** during generation using AbortController
-- Progressive message display for better user experience
-- Frontend uses `ReadableStream` API for parsing SSE events
-
-### Enhanced Source Citations
-- **Document metadata** included in sources (filename, originalUri, sourceType)
-- **Deduplication** by document ID (each document appears once, highest score kept)
-- **Clickable links** for URLs (open in new tab)
-- **Visual badges** with document names instead of just counts
-- Sources sent first in streaming, then content chunks
-
-### Improved Multi-Modal Processing
-
-#### Audio Processing
-- OpenAI Whisper API with explicit filename handling
-- File buffer-based transmission with proper content-type headers
-- 5-minute timeout for long audio files
-- Comprehensive error handling and logging
-
-#### Image Processing
-- **OpenAI Vision API** (replaced HuggingFace BLIP due to API deprecation)
-- Base64 encoding for image transmission
-- Detailed image descriptions (text, objects, people, settings, colors, activities)
-- 60-second timeout for Vision API calls
-- Graceful fallback handling
-
-#### URL Processing
-- Enhanced scraping with authentication detection
-- YouTube URL detection and metadata creation
-- Metadata chunk creation for failed URLs (ensures searchability)
-- Better error messages for user feedback
-
-### Chat Interface Features
-- **Regenerate response** button (hover on last AI message)
-- **Message timestamps** with relative time display ("Just now", "5m ago", "2h ago")
-- **Auto-scroll improvements** during streaming
-- **Input disabled** during response generation (prevents multiple submissions)
-- **Copy message** functionality
-- Better error handling and user feedback
-
-### Error Handling Improvements
-- Graceful handling of failed processing (images, URLs, audio)
-- Informative error messages for users
-- Processing error tracking in document metadata
-- Filtering of error chunks from search results
-- Specific AI responses for failed processing scenarios
 
