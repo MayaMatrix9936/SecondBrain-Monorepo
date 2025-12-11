@@ -629,6 +629,7 @@ export default function Chat() {
             onChange={(e) => setInput(e.target.value)}
             placeholder="Ask a question about your documents... (Press Enter to send)"
             className="flex-1 px-4 py-3 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={loading}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey && !loading && input.trim()) {
                 e.preventDefault();
