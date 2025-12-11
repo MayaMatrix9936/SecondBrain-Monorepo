@@ -147,6 +147,7 @@ async function blipCaptionImage(localPath){
   
   let resp;
   let lastError;
+  let workingEndpoint = null;
   
   for (const endpoint of endpoints) {
     try {
@@ -162,8 +163,10 @@ async function blipCaptionImage(localPath){
       });
       
       if (resp.status === 200 || resp.status === 201) {
+        workingEndpoint = endpoint;
         break;
       } else if (resp.status === 503) {
+        workingEndpoint = endpoint;
         break;
       } else {
         lastError = new Error(`Status ${resp.status}`);
@@ -200,7 +203,10 @@ async function blipCaptionImage(localPath){
       console.log('Model is loading, waiting 10 seconds...');
       await new Promise(resolve => setTimeout(resolve, 10000));
       // Retry once
-      const retryResp = await axios.post(endpoint, imageData, {
+      const retryEndpoint = workingEndpoint && workingEndpoint.includes('router') 
+        ? `https://api-inference.huggingface.co/models/${HF_BLIP_MODEL}`
+        : (workingEndpoint || `https://api-inference.huggingface.co/models/${HF_BLIP_MODEL}`);
+      const retryResp = await axios.post(retryEndpoint, imageData, {
         headers: {
           "Authorization": `Bearer ${HF_API_TOKEN}`,
           "Content-Type": "application/octet-stream"

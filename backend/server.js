@@ -169,6 +169,7 @@ async function blipCaptionImage(localPath){
   
   let resp;
   let lastError;
+  let workingEndpoint = null;
   
   for (const endpoint of endpoints) {
     console.log('Trying endpoint:', endpoint);
@@ -188,10 +189,12 @@ async function blipCaptionImage(localPath){
       // Check if we got a valid response (not 404/410)
       if (resp.status === 200 || resp.status === 201) {
         console.log('Successfully connected to endpoint:', endpoint);
+        workingEndpoint = endpoint;
         break;
       } else if (resp.status === 503) {
         // Model loading - this is actually OK, we'll handle it below
         console.log('Model is loading (503), will retry...');
+        workingEndpoint = endpoint;
         break;
       } else {
         console.log(`Endpoint returned status ${resp.status}, trying next...`);
@@ -241,9 +244,9 @@ async function blipCaptionImage(localPath){
         await new Promise(resolve => setTimeout(resolve, 10000));
         // Retry once
         console.log('Retrying image captioning...');
-        const retryEndpoint = endpoint.includes('router') 
+        const retryEndpoint = workingEndpoint && workingEndpoint.includes('router') 
           ? `https://api-inference.huggingface.co/models/${HF_BLIP_MODEL}`
-          : endpoint;
+          : (workingEndpoint || `https://api-inference.huggingface.co/models/${HF_BLIP_MODEL}`);
         const retryResp = await axios.post(retryEndpoint, imageData, {
           headers: {
             "Authorization": `Bearer ${HF_API_TOKEN}`,
