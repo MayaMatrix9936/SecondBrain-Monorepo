@@ -3,6 +3,7 @@ import axios from 'axios';
 import { useToast } from '../contexts/ToastContext';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+console.log('API_URL:', API_URL); // Debug: Check what URL is being used
 
 export default function Uploader({ onUploadSuccess }) {
   const [uploadType, setUploadType] = useState('file');
@@ -32,6 +33,7 @@ export default function Uploader({ onUploadSuccess }) {
 
       if (uploadType === 'file' && file) {
         formData.append('file', file);
+        console.log('Uploading to:', `${API_URL}/upload`); // Debug
         const response = await axios.post(`${API_URL}/upload`, formData, { headers });
         showSuccess(`File uploaded successfully! Processing...`);
         setFile(null);
