@@ -482,16 +482,8 @@ export default function Chat() {
               }`}
               >
                 <div className="flex items-start justify-between gap-2">
-                <div className="flex items-start justify-between gap-2">
                   <div className="flex-1">
-                    {msg.role === 'assistant' ? (
-                      <div 
-                        className="whitespace-pre-wrap leading-relaxed max-w-none"
-                        dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
-                      />
-                    ) : (
-                      <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
-                    )}
+                    <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
                     {msg.timestamp && (
                       <p className="text-xs opacity-60 mt-2">{formatTimestamp(msg.timestamp)}</p>
                     )}
