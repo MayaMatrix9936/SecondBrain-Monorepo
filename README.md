@@ -82,11 +82,3 @@ It includes:
   npm run dev
   ```
 
-## Tests
-
-```bash
-cd backend
-npm test
-```
-
-See `SYSTEM_DESIGN.md` for design details.
