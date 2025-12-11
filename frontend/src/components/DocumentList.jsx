@@ -3,7 +3,9 @@ import axios from 'axios';
 import DeleteConfirmModal from './DeleteConfirmModal';
 import { useToast } from '../contexts/ToastContext';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+const API_URL = import.meta.env.VITE_API_URL || 
+                (typeof window !== 'undefined' && window.APP_CONFIG?.API_URL) || 
+                'http://localhost:4000';
 
 export default function DocumentList() {
   const [docs, setDocs] = useState([]);
