@@ -137,7 +137,7 @@ async function blipCaptionImage(localPath){
     console.warn('HF_API_TOKEN not set, cannot generate image captions');
     return null; // Return null instead of error message to avoid storing error text
   }
-  const endpoint = `https://api-inference.huggingface.co/models/${HF_BLIP_MODEL}`;
+  const endpoint = `https://router.huggingface.co/models/${HF_BLIP_MODEL}`;
   const imageData = fs.readFileSync(localPath);
   try{
     const resp = await axios.post(endpoint, imageData, {

@@ -158,7 +158,7 @@ async function blipCaptionImage(localPath){
   }
   
   console.log('Attempting image captioning with HF_API_TOKEN:', HF_API_TOKEN ? 'SET' : 'NOT SET');
-  const endpoint = `https://api-inference.huggingface.co/models/${HF_BLIP_MODEL}`;
+  const endpoint = `https://router.huggingface.co/models/${HF_BLIP_MODEL}`;
   console.log('Using endpoint:', endpoint);
   
   const imageData = fs.readFileSync(localPath);
