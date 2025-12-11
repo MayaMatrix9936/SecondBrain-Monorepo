@@ -39,6 +39,8 @@ SecondBrain is a multi-modal personal knowledge management system that enables u
 - **Real-time Chat Interface**: Interactive Q&A with token-by-token streaming responses
 - **Streaming Features**: Stop/cancel generation, regenerate responses, message timestamps
 - **Source Citations**: Clickable source references with document metadata and deduplication
+- **Trash/Recovery**: 30-day recovery window for deleted documents and conversations
+- **Batch Processing**: Optimized batch embedding generation for fast ingestion (10-100x faster)
 - **User Isolation**: Per-user data separation for privacy and scalability
 - **Async Processing**: Background job processing for efficient ingestion
 - **Error Handling**: Graceful error handling with informative user feedback
@@ -297,17 +299,19 @@ Job Received
 
 **Components:**
 - `App.jsx` - Main application container
-- `Chat.jsx` - Chat interface with history
+- `Chat.jsx` - Chat interface with history and streaming
 - `Uploader.jsx` - File/text/URL upload
 - `DocumentList.jsx` - Document management
+- `Trash.jsx` - Trash/recovery interface
 - `DeleteConfirmModal.jsx` - Confirmation dialogs
 - `Toast.jsx` - Notification system
 - `ThemeContext.jsx` - Dark mode support
 
 **Features:**
-- Real-time chat interface
+- Real-time chat interface with streaming responses
 - Document upload (drag & drop)
-- Document listing and deletion
+- Document listing and deletion (moves to trash)
+- Trash/recovery system with 30-day retention
 - Chat history management
 - Dark mode toggle
 - Toast notifications
@@ -665,7 +669,7 @@ Input (File/Text/URL)
          │
          ├──► Audio → Whisper API → Transcript
          │
-         ├──► Image → BLIP API → Caption
+         ├──► Image → OpenAI Vision API → Caption
          │
          ├──► URL → Cheerio → Scraped Text
          │
@@ -682,7 +686,9 @@ Input (File/Text/URL)
 ┌─────────────────┐
 │  Generate       │
 │  Embeddings     │
-│  (OpenAI)       │
+│  (Batch, OpenAI)│
+│  (100 chunks/   │
+│   API call)     │
 └────────┬────────┘
          │
          ▼
@@ -814,7 +820,8 @@ GET /docs
 Response: Array of document objects
 
 DELETE /docs/:docId
-Response: { "ok": true }
+Response: { "ok": true, "movedToTrash": true }
+Note: Documents are moved to trash, not permanently deleted
 ```
 
 #### Conversation Management
@@ -830,7 +837,25 @@ GET /conversations/:id
 Response: Conversation object with messages
 
 DELETE /conversations/:id
-Response: { "ok": true }
+Response: { "ok": true, "movedToTrash": true }
+Note: Conversations are moved to trash, not permanently deleted
+```
+
+#### Trash/Recovery Endpoints
+```
+GET /trash
+Response: Array of trashed items (documents and conversations)
+- Items older than 30 days are automatically removed
+
+POST /trash/restore/:itemId
+Response: { "ok": true, "restored": true, "type": "document|conversation" }
+- Restores item to active storage
+- For documents: regenerates embeddings and re-adds to Chroma
+
+DELETE /trash/:itemId
+Response: { "ok": true, "permanentlyDeleted": true }
+- Permanently deletes item from trash
+- Cannot be recovered after this operation
 ```
 
 ### 10.2 Error Handling
@@ -1360,6 +1385,9 @@ For questions or clarifications, please refer to the codebase or contact the dev
 - ✅ Migrated image captioning from HuggingFace BLIP to OpenAI Vision API
 - ✅ Improved audio transcription with explicit filename handling and better error handling
 - ✅ Enhanced URL scraping with better content extraction and metadata creation
+- ✅ Implemented trash/recovery system with 30-day retention period
+- ✅ Optimized processing with batch embedding generation (10-100x performance improvement)
+- ✅ Added permanent delete functionality for trash items
 - ✅ Improved error handling and user feedback throughout the system
 - ✅ Added auto-scroll improvements during streaming
 

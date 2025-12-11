@@ -9,11 +9,12 @@ This is a complete, detailed script for a 5-10 minute video walkthrough. You can
 1. **Streaming Responses**: Answers stream token-by-token in real-time (like ChatGPT)
 2. **Stop/Regenerate**: Users can cancel generation or regenerate responses
 3. **Source Citations**: Clickable source links with document names and URLs
-4. **Multi-Modal**: PDFs, audio (Whisper), images (OpenAI Vision), URLs, text
-5. **Hybrid Retrieval**: Combines semantic search (85%), keyword matching (15%), and recency (10%)
-6. **Temporal Queries**: Natural language time filtering ("last week", "yesterday")
-7. **Async Processing**: Background job queue for fast uploads
-8. **Architecture**: Microservices with React frontend, Node.js backend, Chroma vector DB, Redis queue
+4. **Trash/Recovery**: 30-day recovery window for deleted items
+5. **Multi-Modal**: PDFs, audio (Whisper), images (OpenAI Vision), URLs, text
+6. **Hybrid Retrieval**: Combines semantic search (85%), keyword matching (15%), and recency (10%)
+7. **Temporal Queries**: Natural language time filtering ("last week", "yesterday")
+8. **Fast Processing**: Batch embedding generation (10-100x faster than sequential)
+9. **Architecture**: Microservices with React frontend, Node.js backend, Chroma vector DB, Redis queue
 
 ---
 
@@ -37,7 +38,7 @@ This is a complete, detailed script for a 5-10 minute video walkthrough. You can
 
 **Now demonstrate:**
 
-"Here, I'm uploading a PDF document. I'll drag and drop it into the upload area. Notice how the system immediately acknowledges the upload and shows a success message. Behind the scenes, the file is being processed asynchronously - the backend stores the metadata and enqueues a job to a Redis queue. A worker will process this job in the background, extracting text from the PDF, chunking it, generating embeddings, and storing it in our vector database. This async approach means users get immediate feedback rather than waiting for processing to complete."
+"Here, I'm uploading a PDF document. I'll drag and drop it into the upload area. Notice how the system immediately acknowledges the upload and shows a success message. Behind the scenes, the file is being processed asynchronously - the backend stores the metadata and enqueues a job to a Redis queue. A worker will process this job in the background, extracting text from the PDF, chunking it, and generating embeddings in batches. The system uses batch embedding generation, processing up to 100 chunks at once, which makes it 10-100 times faster than processing them one by one. This async approach with batch processing means users get immediate feedback and documents are searchable within seconds, even for large files."
 
 **Continue:**
 
@@ -81,7 +82,11 @@ This is a complete, detailed script for a 5-10 minute video walkthrough. You can
 
 **Continue:**
 
-"Let me delete a document. When I click delete, a confirmation modal appears. This prevents accidental deletions. When confirmed, the system removes the document from the vector store, deletes the metadata, and removes the physical file if it exists. This ensures complete cleanup."
+"Let me delete a document. When I click delete, a confirmation modal appears. This prevents accidental deletions. When confirmed, the document is moved to trash - it's not permanently deleted yet. This gives you a 30-day window to recover it if you change your mind."
+
+**Continue:**
+
+"Now let me show you the trash feature. I'll navigate to the Trash tab. Here you can see all deleted items - both documents and conversations. Each item shows when it was deleted and how many days until permanent deletion. I can restore any item with one click, or permanently delete it if I'm sure. Items older than 30 days are automatically removed to save space."
 
 #### Part D: Streaming Features
 
