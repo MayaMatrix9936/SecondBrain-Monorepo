@@ -32,13 +32,15 @@
 SecondBrain is a multi-modal personal knowledge management system that enables users to ingest, index, and query various types of content (documents, audio, images, URLs, and text) using natural language. The system leverages AI-powered semantic search, vector embeddings, and large language models to provide intelligent answers based on user's personal knowledge base.
 
 ### Key Features
-- **Multi-Modal Ingestion**: Support for PDFs, audio files, images, web URLs, and plain text
-- **Semantic Search**: Vector-based retrieval using OpenAI embeddings
-- **Temporal Queries**: Natural language time-based filtering (e.g., "last week", "last month")
-- **Hybrid Retrieval**: Combines semantic similarity, keyword matching, and recency scoring
-- **Real-time Chat Interface**: Interactive Q&A with streaming responses
+- **Multi-Modal Ingestion**: Support for PDFs, audio files (MP3, M4A, WAV, MP4), images (PNG, JPG, WEBP), web URLs, and plain text
+- **Semantic Search**: Vector-based retrieval using OpenAI embeddings (text-embedding-3-small)
+- **Temporal Queries**: Natural language time-based filtering (e.g., "last week", "last month", "last Tuesday")
+- **Hybrid Retrieval**: Combines semantic similarity (85%), keyword matching (15%), and recency scoring (10%)
+- **Real-time Chat Interface**: Interactive Q&A with token-by-token streaming responses via Server-Sent Events (SSE)
+- **Advanced Chat Features**: Stop streaming, regenerate responses, message timestamps, source citations with clickable links
 - **User Isolation**: Per-user data separation for privacy and scalability
-- **Async Processing**: Background job queue for efficient ingestion
+- **Async Processing**: Background job processing for efficient ingestion
+- **Error Handling**: Graceful error handling with informative user feedback for failed processing
 
 ---
 
@@ -558,18 +560,39 @@ final_score = 0.85 * semantic_score
 ### 7.3 RAG (Retrieval-Augmented Generation)
 
 **Context Building:**
-1. Retrieve top-k chunks (default: 5)
-2. Combine into context window
-3. Add system prompt with instructions
-4. Send to LLM (gpt-4o-mini)
-5. Return answer with source citations
+1. Retrieve top-k chunks (default: 6, retrieves 3x for scoring)
+2. Apply hybrid scoring (semantic + keyword + recency)
+3. Filter out error chunks and apply temporal filters
+4. Deduplicate sources by document (keep highest scoring reference per document)
+5. Combine into context window
+6. Add system prompt with instructions
+7. Send to LLM (gpt-4o-mini) with streaming support
+8. Return answer with source citations (including document metadata)
+
+**Streaming Implementation:**
+- Uses Server-Sent Events (SSE) for real-time token delivery
+- Backend streams OpenAI response token-by-token via `openaiChatStream()` generator
+- Frontend receives chunks via `ReadableStream` API
+- Updates UI progressively as tokens arrive (word-by-word display)
+- Supports cancellation via `AbortController` (stop button)
+- Message types: `sources` (sent first), `chunk` (streamed), `done` (completion), `error` (errors)
+
+**Source Citations:**
+- Includes document metadata (filename, originalUri, sourceType)
+- Deduplicated by document ID (each document appears once, highest score kept)
+- Clickable links for URLs (open in new tab)
+- Visual badges with document names
+- Source count display
 
 **Prompt Template:**
 ```
 You are a helpful assistant. Answer the user's question based ONLY on the provided context.
 
 Context:
+Source 1 (doc:{docId}, score:{score}):
 [Chunk 1]
+---
+Source 2 (doc:{docId}, score:{score}):
 [Chunk 2]
 ...
 
@@ -603,8 +626,13 @@ Answer:
 
 #### Web URLs
 - **Parser**: `cheerio` (server-side HTML parsing)
-- **Extraction**: Text from `<p>` tags
-- **Output**: Scraped article text
+- **Extraction**: Text from multiple elements (`<p>`, `<h1-h6>`, `<article>`, etc.)
+- **Features**: 
+  - Authentication detection (identifies login-required pages)
+  - YouTube URL detection and metadata creation
+  - Proper headers to avoid blocking
+  - Metadata chunk creation for failed URLs (ensures searchability)
+- **Output**: Scraped article text or metadata for searchable URLs
 
 #### Plain Text
 - **Processing**: Direct ingestion
@@ -624,10 +652,13 @@ Input (File/Text/URL)
          ├──► PDF → pdf-parse → Text
          │
          ├──► Audio → Whisper API → Transcript
+         │    (with filename handling, error recovery)
          │
-         ├──► Image → BLIP API → Caption
+         ├──► Image → OpenAI Vision API → Caption
+         │    (with base64 encoding, detailed descriptions)
          │
          ├──► URL → Cheerio → Scraped Text
+         │    (with auth detection, metadata fallback)
          │
          └──► Text → Direct
          │
