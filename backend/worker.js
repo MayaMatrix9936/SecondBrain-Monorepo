@@ -241,8 +241,9 @@ const worker = new Worker('ingest', async job => {
         if(caption) {
           text = caption;
         } else {
-          // If captioning failed, use a generic description instead of error message
-          text = 'An image was uploaded but automatic captioning is not available. The image content cannot be described automatically.';
+          // If captioning failed, don't create chunks with error messages
+          // The document will exist but won't have searchable content
+          text = '';
         }
       } else {
         try{ text = fs.readFileSync(localPath,'utf8'); }catch(e){ text=''; }
@@ -278,6 +279,10 @@ const worker = new Worker('ingest', async job => {
         doc.processedAt = now;
         if(d.filename && !doc.filename) doc.filename = d.filename;
         if(d.filename && !doc.title) doc.title = d.filename;
+        // Mark document with processing status if image captioning failed
+        if(sourceType === 'image' && !caption && chromaItems.length === 0) {
+          doc.processingError = 'Image captioning failed or not available';
+        }
       }
       writeStorage(storage);
       return { ok:true, created: chromaItems.length };
@@ -297,9 +302,13 @@ const worker = new Worker('ingest', async job => {
       return { ok:true };
     } else if(d.jobType==='ingest_url'){
       const scraped = await scrapeUrl(d.url);
-      // Always create chunks even if scraping failed, so user knows what happened
-      const textToChunk = scraped.text || `URL: ${d.url}\n\nNote: Unable to extract content from this URL. It may require authentication, JavaScript rendering, or may be inaccessible.`;
-      const chunks = chunkText(textToChunk, 400);
+      // Check if scraping failed - if text starts with "Failed to scrape", don't create chunks
+      let textToChunk = scraped.text || '';
+      if(textToChunk.startsWith('Failed to scrape')) {
+        // Don't create chunks with error messages - just mark as processed
+        textToChunk = '';
+      }
+      const chunks = textToChunk ? chunkText(textToChunk, 400) : [];
       const chromaItems=[];
       for(const ch of chunks){
         const emb = await embedText(ch);
@@ -313,6 +322,10 @@ const worker = new Worker('ingest', async job => {
         doc3.processedAt = now; 
         doc3.title = scraped.title||doc3.title||d.url;
         if(!doc3.filename && scraped.title) doc3.filename = scraped.title;
+        // Mark document with processing status if scraping failed
+        if(!textToChunk && scraped.text && scraped.text.startsWith('Failed to scrape')) {
+          doc3.processingError = 'URL content extraction failed';
+        }
       }
       writeStorage(storage);
       return { ok:true, created: chromaItems.length };

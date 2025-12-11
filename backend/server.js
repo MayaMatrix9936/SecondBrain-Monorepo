@@ -269,8 +269,9 @@ async function processJob(jobData) {
         if(caption) {
           text = caption;
         } else {
-          // If captioning failed, use a generic description instead of error message
-          text = 'An image was uploaded but automatic captioning is not available. The image content cannot be described automatically.';
+          // If captioning failed, don't create chunks with error messages
+          // The document will exist but won't have searchable content
+          text = '';
         }
       } else {
         try{ text = fs.readFileSync(localPath,'utf8'); }catch(e){ text=''; }
@@ -306,6 +307,10 @@ async function processJob(jobData) {
         doc.processedAt = now;
         if(filename) doc.filename = filename;
         if(filename && !doc.title) doc.title = filename;
+        // Mark document with processing status if image captioning failed
+        if(sourceType === 'image' && !caption && chromaItems.length === 0) {
+          doc.processingError = 'Image captioning failed or not available';
+        }
       }
       writeStorage(storage);
       return { ok:true, created: chromaItems.length };
@@ -325,9 +330,13 @@ async function processJob(jobData) {
       return { ok:true };
     } else if(d.jobType==='ingest_url'){
       const scraped = await scrapeUrl(d.url);
-      // Always create chunks even if scraping failed, so user knows what happened
-      const textToChunk = scraped.text || `URL: ${d.url}\n\nNote: Unable to extract content from this URL. It may require authentication, JavaScript rendering, or may be inaccessible.`;
-      const chunks = chunkText(textToChunk, 400);
+      // Check if scraping failed - if text starts with "Failed to scrape", don't create chunks
+      let textToChunk = scraped.text || '';
+      if(textToChunk.startsWith('Failed to scrape')) {
+        // Don't create chunks with error messages - just mark as processed
+        textToChunk = '';
+      }
+      const chunks = textToChunk ? chunkText(textToChunk, 400) : [];
       const chromaItems=[];
       for(const ch of chunks){
         const emb = await embedText(ch);
@@ -341,6 +350,10 @@ async function processJob(jobData) {
         doc3.processedAt = now; 
         doc3.title = scraped.title||doc3.title||d.url;
         if(!doc3.filename && scraped.title) doc3.filename = scraped.title;
+        // Mark document with processing status if scraping failed
+        if(!textToChunk && scraped.text && scraped.text.startsWith('Failed to scrape')) {
+          doc3.processingError = 'URL content extraction failed';
+        }
       }
       writeStorage(storage);
       return { ok:true, created: chromaItems.length };
@@ -440,17 +453,27 @@ app.post('/query', async (req,res)=>{
       const cid = r.id;
       const chunk = storage.chunks.find(c=>c.chunkId===cid);
       if(!chunk) continue;
+      
+      // Filter out error chunks - don't include chunks with error messages
+      const chunkText = chunk.text || '';
+      if(chunkText.includes('Failed to scrape') || 
+         chunkText.includes('caption error') || 
+         chunkText.includes('automatic captioning is not available') ||
+         chunkText.includes('cannot be described automatically')) {
+        continue; // Skip error chunks
+      }
+      
       if(fromDate || toDate){
         const created = new Date(chunk.createdAt || Date.now());
         if(fromDate && created < fromDate) continue;
         if(toDate && created > toDate) continue;
       }
-      const kw = keywordScore(query, chunk.text || '');
+      const kw = keywordScore(query, chunkText);
       const ageHours = (now - new Date(chunk.createdAt || now).getTime()) / (1000*60*60);
       const recencyBoost = Math.max(0, 1 - Math.min(ageHours/24/30, 1));
       const baseScore = 1 - (r.distance || 0);
       const combined = baseScore*0.85 + kw*0.15 + recencyBoost*0.1;
-      scored.push({ chunkId: cid, docId: chunk.docId, text: chunk.text, score: combined });
+      scored.push({ chunkId: cid, docId: chunk.docId, text: chunkText, score: combined });
     }
     scored.sort((a,b)=>b.score-a.score);
     const top = scored.slice(0,k);
@@ -459,9 +482,19 @@ app.post('/query', async (req,res)=>{
     // Improved prompt that handles edge cases better
     let prompt = `You are a helpful assistant. Use the context below to answer the question. `;
     if(ctx.trim().length === 0 || top.length === 0) {
-      prompt += `\n\nNote: No relevant context was found in the uploaded documents. Please inform the user that you don't have information about this topic in the uploaded documents, and suggest they upload relevant documents or try a different question.`;
+      // Check if user is asking about a specific document type (image or URL)
+      const isImageQuery = /image|picture|photo|what.*image|describe.*image/i.test(query);
+      const isUrlQuery = /url|link|website|web page|what.*url|what.*link/i.test(query);
+      
+      if(isImageQuery) {
+        prompt += `\n\nNote: The user is asking about an image, but no image content was found in the uploaded documents. This likely means the image was uploaded but automatic captioning failed or is not available. Please inform the user that the image was uploaded but its content could not be automatically described. Suggest they try uploading the image again, or if they have a HuggingFace API token, ensure it's properly configured.`;
+      } else if(isUrlQuery) {
+        prompt += `\n\nNote: The user is asking about a URL, but no content was found from that URL. This likely means the URL was uploaded but content extraction failed (possibly due to authentication requirements, JavaScript rendering needs, or access restrictions). Please inform the user that the URL was uploaded but its content could not be extracted. Suggest they try providing the content directly or check if the URL requires special access.`;
+      } else {
+        prompt += `\n\nNote: No relevant context was found in the uploaded documents. Please inform the user that you don't have information about this topic in the uploaded documents, and suggest they upload relevant documents or try a different question.`;
+      }
     } else {
-      prompt += `\n\nContext:\n${ctx}\n\nQuestion: ${query}\n\nInstructions: If the context contains error messages (like "Failed to scrape URL" or "caption error"), inform the user that there was an issue processing that content and suggest they try uploading it again or provide the content directly.`;
+      prompt += `\n\nContext:\n${ctx}\n\nQuestion: ${query}\n\nAnswer the question based on the context provided.`;
     }
     
     const answer = await openaiChat(prompt);
