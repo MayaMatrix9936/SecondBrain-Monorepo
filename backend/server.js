@@ -78,6 +78,51 @@ async function embedText(text){
   return resp.data.data[0].embedding;
 }
 
+// Batch embedding generation - much faster for multiple chunks
+async function embedTextsBatch(texts){
+  if (texts.length === 0) return [];
+  if (texts.length === 1) {
+    const emb = await embedText(texts[0]);
+    return [emb];
+  }
+  
+  try {
+    // OpenAI supports up to 2048 inputs per request, but we'll batch in smaller chunks for reliability
+    const batchSize = 100; // Process 100 chunks at a time
+    const allEmbeddings = [];
+    
+    for (let i = 0; i < texts.length; i += batchSize) {
+      const batch = texts.slice(i, i + batchSize);
+      const resp = await axios.post(
+        'https://api.openai.com/v1/embeddings',
+        {
+          model: 'text-embedding-3-small',
+          input: batch
+        },
+        {
+          headers: { Authorization: `Bearer ${OPENAI_KEY}` },
+          timeout: 60000 // 60 second timeout for large batches
+        }
+      );
+      
+      // Extract embeddings in the same order as input
+      const embeddings = resp.data.data.map(item => item.embedding);
+      allEmbeddings.push(...embeddings);
+    }
+    
+    return allEmbeddings;
+  } catch (e) {
+    console.error('Batch embedding failed, falling back to sequential:', e.message);
+    // Fallback to sequential if batch fails
+    const embeddings = [];
+    for (const text of texts) {
+      const emb = await embedText(text);
+      embeddings.push(emb);
+    }
+    return embeddings;
+  }
+}
+
 async function transcribeAudio(localPath, filename = null){
   try {
     console.log('Starting audio transcription for:', localPath);
@@ -416,12 +461,21 @@ async function processJob(jobData) {
       }
       const chunks = chunkText(text, 400);
       const chromaItems = [];
-      for(const ch of chunks){
-        const emb = await embedText(ch);
-        const chunkId = uuidv4();
-        storage.chunks.push({ chunkId, docId: d.docId, userId: d.userId, text: ch, createdAt: now, sourceType });
-        chromaItems.push({ id: chunkId, embedding: emb, metadata: { docId: d.docId, userId: d.userId, sourceType }, document: ch });
+      
+      // Generate embeddings in batch (much faster!)
+      if (chunks.length > 0) {
+        console.log(`Generating embeddings for ${chunks.length} chunks in batch...`);
+        const embeddings = await embedTextsBatch(chunks);
+        
+        for (let i = 0; i < chunks.length; i++) {
+          const ch = chunks[i];
+          const emb = embeddings[i];
+          const chunkId = uuidv4();
+          storage.chunks.push({ chunkId, docId: d.docId, userId: d.userId, text: ch, createdAt: now, sourceType });
+          chromaItems.push({ id: chunkId, embedding: emb, metadata: { docId: d.docId, userId: d.userId, sourceType }, document: ch });
+        }
       }
+      
       if(caption && !chunks.length){
         const emb = await embedText(caption);
         const chunkId = uuidv4();
@@ -456,11 +510,19 @@ async function processJob(jobData) {
       const text = d.text||'';
       const chunks = chunkText(text, 400);
       const chromaItems=[];
-      for(const ch of chunks){
-        const emb = await embedText(ch);
-        const chunkId = uuidv4();
-        storage.chunks.push({ chunkId, docId:d.docId, userId:d.userId, text: ch, createdAt: now, sourceType:'text' });
-        chromaItems.push({ id: chunkId, embedding: emb, metadata:{ docId:d.docId, userId:d.userId, sourceType:'text' }, document: ch });
+      
+      // Generate embeddings in batch
+      if (chunks.length > 0) {
+        console.log(`Generating embeddings for ${chunks.length} text chunks in batch...`);
+        const embeddings = await embedTextsBatch(chunks);
+        
+        for (let i = 0; i < chunks.length; i++) {
+          const ch = chunks[i];
+          const emb = embeddings[i];
+          const chunkId = uuidv4();
+          storage.chunks.push({ chunkId, docId:d.docId, userId:d.userId, text: ch, createdAt: now, sourceType:'text' });
+          chromaItems.push({ id: chunkId, embedding: emb, metadata:{ docId:d.docId, userId:d.userId, sourceType:'text' }, document: ch });
+        }
       }
       if(chromaItems.length) await chromaUpsert(d.userId, chromaItems);
       const doc2 = storage.docs.find(x=>x.docId===d.docId); if(doc2) doc2.processedAt = now;
@@ -491,11 +553,19 @@ async function processJob(jobData) {
       
       const chunks = textToChunk ? chunkText(textToChunk, 400) : [];
       const chromaItems=[];
-      for(const ch of chunks){
-        const emb = await embedText(ch);
-        const chunkId = uuidv4();
-        storage.chunks.push({ chunkId, docId:d.docId, userId:d.userId, text: ch, createdAt: now, sourceType:'url', sourceUrl:d.url });
-        chromaItems.push({ id: chunkId, embedding: emb, metadata:{ docId:d.docId, userId:d.userId, sourceType:'url', url:d.url }, document: ch });
+      
+      // Generate embeddings in batch
+      if (chunks.length > 0) {
+        console.log(`Generating embeddings for ${chunks.length} URL chunks in batch...`);
+        const embeddings = await embedTextsBatch(chunks);
+        
+        for (let i = 0; i < chunks.length; i++) {
+          const ch = chunks[i];
+          const emb = embeddings[i];
+          const chunkId = uuidv4();
+          storage.chunks.push({ chunkId, docId:d.docId, userId:d.userId, text: ch, createdAt: now, sourceType:'url', sourceUrl:d.url });
+          chromaItems.push({ id: chunkId, embedding: emb, metadata:{ docId:d.docId, userId:d.userId, sourceType:'url', url:d.url }, document: ch });
+        }
       }
       if(chromaItems.length) await chromaUpsert(d.userId, chromaItems);
       const doc3 = storage.docs.find(x=>x.docId===d.docId); 
