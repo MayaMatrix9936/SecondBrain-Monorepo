@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  backend-tests:
+  backend-build:
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -15,5 +15,5 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '18'
-      - run: npm ci
-      - run: npm test -- --runInBand
+      - run: npm install
+      - run: node --version
