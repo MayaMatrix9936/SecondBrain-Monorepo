@@ -8,8 +8,7 @@ A comprehensive AI-powered personal knowledge management system that enables use
 - **Semantic Search**: Vector-based retrieval using OpenAI embeddings for intelligent document search
 - **Temporal Queries**: Natural language time-based filtering (e.g., "last week", "last month")
 - **Hybrid Retrieval**: Combines semantic similarity, keyword matching, and recency scoring
-- **Real-time Chat Interface**: Interactive Q&A with token-by-token streaming responses (like ChatGPT)
-- **Streaming Features**: Stop/cancel generation, regenerate responses, message timestamps
+- **Real-time Chat Interface**: Interactive Q&A interface
 - **Source Citations**: Clickable source links with document deduplication
 - **Chat History**: Save and manage conversation history
 - **Document Management**: Upload, view, search, and delete documents
@@ -138,7 +137,7 @@ User Query → Backend API → Chroma Search → Hybrid Scoring → LLM → Resp
 - `POST /upload` - Upload files, text, or URLs
 
 ### Query
-- `POST /query` - Query the knowledge base (supports streaming with `stream: true` parameter)
+- `POST /query` - Query the knowledge base
 
 ### Documents
 - `GET /docs` - List all documents
@@ -191,23 +190,6 @@ User Query → Backend API → Chroma Search → Hybrid Scoring → LLM → Resp
 
 - **System Design**: See [SYSTEM_DESIGN_COMPREHENSIVE.md](./SYSTEM_DESIGN_COMPREHENSIVE.md) for detailed architecture documentation
 - **Video Walkthrough**: See [VIDEO_WALKTHROUGH_GUIDE.md](./VIDEO_WALKTHROUGH_GUIDE.md) for a complete walkthrough script
-
-## 💬 Streaming Responses
-
-The chat interface uses **token-by-token streaming** for a more responsive experience:
-
-- **Immediate Start**: Responses begin appearing within 1-2 seconds
-- **Word-by-Word Display**: Text streams in real-time (like ChatGPT)
-- **Stop/Regenerate**: Cancel generation or get a fresh response
-- **Source Citations**: Clickable links to referenced documents
-- **Technical**: Uses Server-Sent Events (SSE) for real-time delivery
-
-### How It Works:
-1. Frontend sends query with `stream: true`
-2. Backend retrieves relevant context using hybrid retrieval
-3. Response streams token-by-token via SSE
-4. Frontend updates UI in real-time as tokens arrive
-5. Sources are sent first, then content chunks, then completion signal
 
 ## 🔒 Security & Privacy
 
