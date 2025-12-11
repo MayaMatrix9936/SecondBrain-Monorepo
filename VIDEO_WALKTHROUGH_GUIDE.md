@@ -101,7 +101,67 @@ This is a complete, detailed script for a 5-10 minute video walkthrough. You can
 
 "Now let me walk you through the architecture. Understanding the system design will help you appreciate the decisions I made and why certain trade-offs were necessary."
 
-**Draw or show diagram:**
+**Show this diagram:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                         CLIENT LAYER                             │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │  React Frontend (Port 5173)                               │   │
+│  │  - Chat Interface                                         │   │
+│  │  - Document Upload                                        │   │
+│  │  - Document Management                                    │   │
+│  │  - Dark Mode Support                                      │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │ HTTP/REST
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      APPLICATION LAYER                          │
+│  ┌──────────────────────┐         ┌──────────────────────┐     │
+│  │  Backend API         │         │  Worker Service      │     │
+│  │  (Port 4000)         │◄───────►│  (Background Jobs)   │     │
+│  │  - Express.js         │  Redis  │  - BullMQ Consumer   │     │
+│  │  - REST Endpoints     │  Queue │  - Embedding Gen     │     │
+│  │  - Query Processing   │         │  - Chunk Processing  │     │
+│  └──────────────────────┘         └──────────────────────┘     │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │ HTTP
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                        DATA LAYER                               │
+│  ┌──────────────────────┐         ┌──────────────────────┐   │
+│  │  Chroma Vector Store  │         │  Redis Cache          │   │
+│  │  (Port 8000)          │         │  (Port 6379)          │   │
+│  │  - FastAPI Service    │         │  - Job Queue          │   │
+│  │  - DuckDB + Parquet   │         │  - Caching            │   │
+│  │  - Per-User Collections│         │  - Session State      │   │
+│  └──────────────────────┘         └──────────────────────┘   │
+│                                                                 │
+│  ┌──────────────────────────────────────────────────────────┐ │
+│  │  Metadata Store (storage.json)                          │ │
+│  │  - Document Metadata                                     │ │
+│  │  - Chunk References                                       │ │
+│  │  - Knowledge Graph                                       │ │
+│  └──────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              │ API Calls
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      EXTERNAL SERVICES                           │
+│  ┌──────────────────────┐         ┌──────────────────────┐   │
+│  │  OpenAI API          │         │  HuggingFace API     │   │
+│  │  - Embeddings        │         │  - BLIP Image        │   │
+│  │  - Chat Completions  │         │    Captioning        │   │
+│  │  - Whisper (Audio)   │         │                      │   │
+│  └──────────────────────┘         └──────────────────────┘   │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Read this:**
 
 "The system follows a microservices architecture. At the front, we have a React application built with Vite. It communicates with a Node.js Express backend via REST API. The backend handles HTTP requests, manages file uploads, and processes queries. But here's the key design decision - heavy processing happens asynchronously through a worker service."
 
@@ -123,7 +183,63 @@ This is a complete, detailed script for a 5-10 minute video walkthrough. You can
 
 "Let me dive deeper into the ingestion pipeline, as this is where much of the complexity lies."
 
-**Explain:**
+**Show this diagram:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    INGESTION PIPELINE                           │
+│                                                                 │
+│  User Upload                                                    │
+│      │                                                          │
+│      ▼                                                          │
+│  ┌─────────────┐                                               │
+│  │  Backend API │                                               │
+│  │  - Store     │                                               │
+│  │    metadata  │                                               │
+│  │  - Enqueue   │                                               │
+│  │    job       │                                               │
+│  └──────┬───────┘                                               │
+│         │                                                        │
+│         │ BullMQ Job                                            │
+│         ▼                                                        │
+│  ┌─────────────┐                                               │
+│  │   Worker    │                                               │
+│  │   Service   │                                               │
+│  └──────┬───────┘                                               │
+│         │                                                        │
+│         ├──► PDF → pdf-parse → Text                             │
+│         │                                                        │
+│         ├──► Audio → Whisper API → Transcript                   │
+│         │                                                        │
+│         ├──► Image → BLIP API → Caption                         │
+│         │                                                        │
+│         ├──► URL → Cheerio → Scraped Text                       │
+│         │                                                        │
+│         └──► Text → Direct                                      │
+│         │                                                        │
+│         ▼                                                        │
+│  ┌─────────────┐                                               │
+│  │   Chunking  │                                               │
+│  │  (~400 words│                                               │
+│  │   15% overlap)│                                             │
+│  └──────┬───────┘                                               │
+│         │                                                        │
+│         ▼                                                        │
+│  ┌─────────────┐                                               │
+│  │  Embedding  │                                               │
+│  │  Generation │                                               │
+│  │  (OpenAI)   │                                               │
+│  └──────┬───────┘                                               │
+│         │                                                        │
+│         ▼                                                        │
+│  ┌─────────────┐                                               │
+│  │   Chroma    │                                               │
+│  │   Storage   │                                               │
+│  └─────────────┘                                               │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Read this:**
 
 "When content arrives, it goes through a transformation pipeline. PDFs are parsed using pdf-parse, extracting text while preserving structure. Audio files are sent to OpenAI's Whisper API for transcription. Images go to HuggingFace's BLIP model for captioning. URLs are scraped server-side using cheerio, extracting text from paragraph tags. Plain text is used directly."
 
@@ -133,7 +249,44 @@ This is a complete, detailed script for a 5-10 minute video walkthrough. You can
 
 **Continue:**
 
-"Each chunk is then converted to a 1536-dimensional vector using OpenAI's text-embedding-3-small model. These embeddings capture semantic meaning, allowing the system to find conceptually similar content even when exact keywords don't match. The vectors are stored in Chroma along with metadata - document ID, user ID, source type, and timestamps. This metadata enables filtering and hybrid scoring later."
+"Each chunk is then converted to a 1536-dimensional vector using OpenAI's text-embedding-3-small model. These embeddings capture semantic meaning, allowing the system to find conceptually similar content even when exact keywords don't match."
+
+**Show this diagram:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    CHUNKING STRATEGY                            │
+│                                                                 │
+│  Original Text:                                                 │
+│  ┌──────────────────────────────────────────────────────────┐ │
+│  │  [Paragraph 1] [Paragraph 2] [Paragraph 3] [Paragraph 4]│ │
+│  └──────────────────────────────────────────────────────────┘ │
+│                                                                 │
+│  Chunked (400 words, 15% overlap):                             │
+│  ┌──────────────────┐                                          │
+│  │  Chunk 1         │  (words 1-400)                          │
+│  │  [Para 1-2]      │                                          │
+│  └──────────────────┘                                          │
+│         │ 15% overlap                                           │
+│         ▼                                                       │
+│  ┌──────────────────┐                                          │
+│  │  Chunk 2         │  (words 340-740)                         │
+│  │  [Para 2-3]      │                                          │
+│  └──────────────────┘                                          │
+│         │ 15% overlap                                           │
+│         ▼                                                       │
+│  ┌──────────────────┐                                          │
+│  │  Chunk 3         │  (words 680-1080)                        │
+│  │  [Para 3-4]      │                                          │
+│  └──────────────────┘                                          │
+│                                                                 │
+│  Each chunk → Embedding (1536 dimensions) → Chroma Vector Store│
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Continue:**
+
+"The vectors are stored in Chroma along with metadata - document ID, user ID, source type, and timestamps. This metadata enables filtering and hybrid scoring later."
 
 **Continue:**
 
@@ -145,6 +298,70 @@ This is a complete, detailed script for a 5-10 minute video walkthrough. You can
 
 "The query processing system is where the real intelligence happens. It's not just a simple vector search - it's a sophisticated hybrid retrieval system."
 
+**Show this diagram:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    QUERY PROCESSING FLOW                        │
+│                                                                 │
+│  User Query: "What did I learn last week?"                     │
+│      │                                                          │
+│      ▼                                                          │
+│  ┌─────────────────┐                                           │
+│  │  Parse Query    │                                           │
+│  │  - Extract time │                                           │
+│  │  - Keywords     │                                           │
+│  └──────┬──────────┘                                           │
+│         │                                                       │
+│         ▼                                                       │
+│  ┌─────────────────┐                                           │
+│  │  Generate Query │                                           │
+│  │  Embedding      │                                           │
+│  │  (OpenAI)       │                                           │
+│  └──────┬──────────┘                                           │
+│         │                                                       │
+│         ▼                                                       │
+│  ┌─────────────────┐                                           │
+│  │  Vector Search  │                                           │
+│  │  (Chroma)       │                                           │
+│  │  - Top 15       │                                           │
+│  │    candidates   │                                           │
+│  └──────┬──────────┘                                           │
+│         │                                                       │
+│         ▼                                                       │
+│  ┌─────────────────┐                                           │
+│  │  Temporal       │                                           │
+│  │  Filtering      │                                           │
+│  │  (chrono-node)  │                                           │
+│  └──────┬──────────┘                                           │
+│         │                                                       │
+│         ▼                                                       │
+│  ┌─────────────────┐                                           │
+│  │  Hybrid Scoring │                                           │
+│  │  - 85% Semantic │                                           │
+│  │  - 15% Keyword  │                                           │
+│  │  - 10% Recency  │                                           │
+│  └──────┬──────────┘                                           │
+│         │                                                       │
+│         ▼                                                       │
+│  ┌─────────────────┐                                           │
+│  │  Top-K Chunks   │                                           │
+│  │  (k=5)          │                                           │
+│  └──────┬──────────┘                                           │
+│         │                                                       │
+│         ▼                                                       │
+│  ┌─────────────────┐                                           │
+│  │  LLM Generation │                                           │
+│  │  (GPT-4o-mini)  │                                           │
+│  │  - Context      │                                           │
+│  │  - Answer       │                                           │
+│  └──────┬──────────┘                                           │
+│         │                                                       │
+│         ▼                                                       │
+│  Return Answer + Sources                                       │
+└─────────────────────────────────────────────────────────────────┘
+```
+
 **Explain:**
 
 "When a query comes in, several things happen in parallel. First, the query text is parsed to extract temporal constraints using chrono-node. Phrases like 'last week' or 'in December' are converted to date ranges. The query is also converted to an embedding using the same model used for documents."
@@ -155,7 +372,41 @@ This is a complete, detailed script for a 5-10 minute video walkthrough. You can
 
 **Continue:**
 
-"Here's where the hybrid scoring comes in. Each candidate gets three scores. First, semantic similarity from the vector search - this captures conceptual relevance. Second, keyword matching - a simple substring frequency score that catches exact matches. Third, recency boost - an exponential decay function that favors recent documents. The final score combines these: 85% semantic, 15% keyword, and 10% recency boost. This hybrid approach gives us the best of both worlds - semantic understanding plus traditional search capabilities."
+"Here's where the hybrid scoring comes in. Each candidate gets three scores."
+
+**Show this diagram:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    HYBRID SCORING FORMULA                       │
+│                                                                 │
+│  Final Score = 0.85 × Semantic + 0.15 × Keyword + 0.10 × Recency│
+│                                                                 │
+│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────┐ │
+│  │  Semantic Score  │  │  Keyword Score   │  │ Recency Boost│ │
+│  │  (85% weight)    │  │  (15% weight)    │  │ (10% weight) │ │
+│  │                  │  │                  │  │              │ │
+│  │  Cosine          │  │  Substring       │  │ Exponential  │ │
+│  │  Similarity      │  │  Frequency       │  │ Decay        │ │
+│  │  from Chroma     │  │  Matching        │  │ Function     │ │
+│  │                  │  │                  │  │              │ │
+│  │  Range: 0.0-1.0  │  │  Normalized      │  │ Favors last  │ │
+│  │                  │  │                  │  │ 30 days     │ │
+│  └──────────────────┘  └──────────────────┘  └──────────────┘ │
+│         │                       │                    │          │
+│         └───────────────────────┴────────────────────┘          │
+│                            │                                    │
+│                            ▼                                    │
+│                    ┌──────────────┐                            │
+│                    │ Final Score  │                            │
+│                    │ (Sorted)     │                            │
+│                    └──────────────┘                            │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Continue:**
+
+"First, semantic similarity from the vector search - this captures conceptual relevance. Second, keyword matching - a simple substring frequency score that catches exact matches. Third, recency boost - an exponential decay function that favors recent documents. The final score combines these: 85% semantic, 15% keyword, and 10% recency boost. This hybrid approach gives us the best of both worlds - semantic understanding plus traditional search capabilities."
 
 **Continue:**
 
@@ -170,6 +421,54 @@ This is a complete, detailed script for a 5-10 minute video walkthrough. You can
 **Read this:**
 
 "Data storage is split across multiple systems, each optimized for its purpose."
+
+**Show this diagram:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    DATA STORAGE ARCHITECTURE                    │
+│                                                                 │
+│  ┌──────────────────────────────────────────────────────────┐ │
+│  │  Chroma Vector Store (Per-User Collections)                │ │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │ │
+│  │  │ User 1       │  │ User 2       │  │ User 3       │  │ │
+│  │  │ Collection   │  │ Collection   │  │ Collection   │  │ │
+│  │  │              │  │              │  │              │  │ │
+│  │  │ Vectors:     │  │ Vectors:     │  │ Vectors:     │  │ │
+│  │  │ - Embeddings │  │ - Embeddings │  │ - Embeddings │  │ │
+│  │  │ - Metadata   │  │ - Metadata   │  │ - Metadata   │  │ │
+│  │  │ - Documents   │  │ - Documents   │  │ - Documents   │  │ │
+│  │  └──────────────┘  └──────────────┘  └──────────────┘  │ │
+│  │                                                           │ │
+│  │  Storage: DuckDB (metadata) + Parquet (vectors)          │ │
+│  │  Index: HNSW (Hierarchical Navigable Small World)        │ │
+│  └──────────────────────────────────────────────────────────┘ │
+│                                                                 │
+│  ┌──────────────────────────────────────────────────────────┐ │
+│  │  Metadata Store (storage.json)                           │ │
+│  │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐  │ │
+│  │  │ docs[]       │  │ chunks[]     │  │ graph{}      │  │ │
+│  │  │ - docId      │  │ - chunkId    │  │ - nodes[]    │  │ │
+│  │  │ - userId     │  │ - docId      │  │ - edges[]    │  │ │
+│  │  │ - filename   │  │ - text       │  │              │  │ │
+│  │  │ - sourceType │  │ - createdAt  │  │              │  │ │
+│  │  │ - uploadedAt │  │              │  │              │  │ │
+│  │  └──────────────┘  └──────────────┘  └──────────────┘  │ │
+│  │                                                           │ │
+│  │  Production: Would migrate to PostgreSQL + pgvector      │ │
+│  └──────────────────────────────────────────────────────────┘ │
+│                                                                 │
+│  ┌──────────────────────────────────────────────────────────┐ │
+│  │  Redis (Job Queue + Cache)                                │ │
+│  │  ┌──────────────┐  ┌──────────────┐                     │ │
+│  │  │ BullMQ Queue │  │ Cache Layer  │                     │ │
+│  │  │ - upload_file│  │ - Frequent  │                     │ │
+│  │  │ - inline_text│  │   queries   │                     │ │
+│  │  │ - ingest_url │  │ - Session   │                     │ │
+│  │  └──────────────┘  └──────────────┘                     │ │
+│  └──────────────────────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 **Explain:**
 
@@ -197,6 +496,30 @@ This is a complete, detailed script for a 5-10 minute video walkthrough. You can
 
 "My first major decision was choosing a vector database. I evaluated Chroma and Pinecone, two popular options."
 
+**Show this comparison diagram:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│              CHROMA vs PINECONE COMPARISON                      │
+│                                                                 │
+│  ┌──────────────────────┐  ┌──────────────────────┐          │
+│  │  CHROMA (Chosen)      │  │  PINECONE            │          │
+│  ├──────────────────────┤  ├──────────────────────┤          │
+│  │ ✅ Open Source        │  │ ✅ Managed Service   │          │
+│  │ ✅ Self-hostable      │  │ ✅ Auto-scaling      │          │
+│  │ ✅ No vendor lock-in  │  │ ✅ Production-ready  │          │
+│  │ ✅ No per-query cost  │  │ ✅ Monitoring        │          │
+│  │ ✅ Local-first        │  │ ✅ Optimization     │          │
+│  │                      │  │                      │          │
+│  │ ❌ Less managed       │  │ ❌ Vendor lock-in    │          │
+│  │ ❌ Smaller community  │  │ ❌ Higher cost       │          │
+│  │ ❌ More setup         │  │ ❌ Less control      │          │
+│  └──────────────────────┘  └──────────────────────┘          │
+│                                                                 │
+│  Trade-off: Flexibility & Cost Control vs Managed Convenience  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
 **Explain:**
 
 "I chose Chroma for several reasons. First, it's open source and self-hostable, which means no vendor lock-in and no per-query costs. Second, it's excellent for prototyping and local-first deployments. Third, it uses DuckDB and Parquet, which are well-understood technologies. However, this choice comes with trade-offs. Pinecone is a managed service with better scaling characteristics and production reliability. It handles infrastructure, monitoring, and optimization automatically. But it's more expensive and creates vendor dependency."
@@ -210,6 +533,31 @@ This is a complete, detailed script for a 5-10 minute video walkthrough. You can
 **Read this:**
 
 "Another significant decision was how to store metadata. I chose a JSON file for the prototype, but this is clearly not production-ready."
+
+**Show this comparison:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│          JSON FILE vs DATABASE COMPARISON                       │
+│                                                                 │
+│  ┌──────────────────────┐  ┌──────────────────────┐          │
+│  │  storage.json        │  │  PostgreSQL          │          │
+│  │  (Current)           │  │  (Production)        │          │
+│  ├──────────────────────┤  ├──────────────────────┤          │
+│  │ ✅ No setup needed   │  │ ✅ ACID transactions │          │
+│  │ ✅ Easy to debug     │  │ ✅ Concurrent safe   │          │
+│  │ ✅ Simple prototype  │  │ ✅ Scalable          │          │
+│  │ ✅ Human readable    │  │ ✅ Better performance│          │
+│  │                      │  │ ✅ Backup/recovery  │          │
+│  │ ❌ Not concurrent    │  │                      │          │
+│  │ ❌ Limited scale     │  │ ❌ More complex      │          │
+│  │ ❌ No transactions   │  │ ❌ Requires setup    │          │
+│  │ ❌ Data loss risk    │  │                      │          │
+│  └──────────────────────┘  └──────────────────────┘          │
+│                                                                 │
+│  Migration Path: Clear mapping to database tables              │
+└─────────────────────────────────────────────────────────────────┘
+```
 
 **Explain:**
 
