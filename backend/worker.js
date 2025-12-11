@@ -54,6 +54,7 @@ async function embedText(text){
 async function transcribeAudio(localPath, filename = null){
   try {
     console.log('Starting audio transcription for:', localPath);
+    console.log('Provided filename:', filename);
     
     // Check if file exists
     if (!fs.existsSync(localPath)) {
@@ -63,18 +64,48 @@ async function transcribeAudio(localPath, filename = null){
     const fileStats = fs.statSync(localPath);
     console.log('Audio file size:', fileStats.size, 'bytes');
     
-    // Determine filename - use provided filename or extract from path
-    const fileExtension = path.extname(localPath).toLowerCase();
-    const finalFilename = filename || `audio${fileExtension}`;
-    console.log('Using filename for transcription:', finalFilename);
+    // Determine filename - prioritize provided filename, fallback to extracting from path
+    let finalFilename;
+    let fileExtension;
+    
+    if (filename) {
+      // Use the provided filename (should include extension)
+      finalFilename = filename;
+      fileExtension = path.extname(filename).toLowerCase();
+      console.log('Using provided filename:', finalFilename, 'with extension:', fileExtension);
+    } else {
+      // Fallback: try to extract from localPath
+      fileExtension = path.extname(localPath).toLowerCase();
+      if (!fileExtension) {
+        // If no extension in path, default to .mp3
+        fileExtension = '.mp3';
+        console.warn('No file extension found, defaulting to .mp3');
+      }
+      finalFilename = `audio${fileExtension}`;
+      console.log('Using generated filename:', finalFilename);
+    }
+    
+    // Ensure filename has proper extension for OpenAI
+    if (!fileExtension || fileExtension === '.') {
+      fileExtension = '.mp3';
+      if (!finalFilename.endsWith('.mp3')) {
+        finalFilename = finalFilename + '.mp3';
+      }
+    }
+    
+    console.log('Final filename for transcription:', finalFilename);
+    console.log('File extension:', fileExtension);
     
     // Read file as buffer and append with explicit filename
     // OpenAI Whisper API requires the filename to determine the format
     const fileBuffer = fs.readFileSync(localPath);
     const fm = new FormData();
+    
+    // Remove leading dot from extension for content-type (e.g., .mp3 -> mp3)
+    const contentTypeExt = fileExtension.substring(1) || 'mp3';
     fm.append('file', fileBuffer, {
       filename: finalFilename,
-      contentType: `audio/${fileExtension.substring(1)}` // e.g., audio/mp3
+      contentType: `audio/${contentTypeExt}`
     });
     fm.append('model', 'whisper-1');
     
