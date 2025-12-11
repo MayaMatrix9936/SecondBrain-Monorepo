@@ -24,6 +24,14 @@ const CHROMA_URL = process.env.CHROMA_URL || 'http://localhost:8000';
 const HF_API_TOKEN = process.env.HF_API_TOKEN;
 const HF_BLIP_MODEL = process.env.HF_BLIP_MODEL || "Salesforce/blip-image-captioning-large";
 
+// Log token status (without exposing the actual token)
+if (HF_API_TOKEN) {
+  console.log('✓ HF_API_TOKEN is configured (length:', HF_API_TOKEN.length, 'chars)');
+  console.log('✓ Image captioning enabled with model:', HF_BLIP_MODEL);
+} else {
+  console.warn('⚠ HF_API_TOKEN not set - image captioning will be disabled');
+}
+
 const app = express();
 const cors = require("cors");
 
@@ -148,8 +156,14 @@ async function blipCaptionImage(localPath){
     console.warn('HF_API_TOKEN not set, cannot generate image captions');
     return null; // Return null instead of error message to avoid storing error text
   }
+  
+  console.log('Attempting image captioning with HF_API_TOKEN:', HF_API_TOKEN ? 'SET' : 'NOT SET');
   const endpoint = `https://api-inference.huggingface.co/models/${HF_BLIP_MODEL}`;
+  console.log('Using endpoint:', endpoint);
+  
   const imageData = fs.readFileSync(localPath);
+  console.log('Image file size:', imageData.length, 'bytes');
+  
   try{
     const resp = await axios.post(endpoint, imageData, {
       headers: {
@@ -159,43 +173,58 @@ async function blipCaptionImage(localPath){
       timeout: 30000 // 30 second timeout for model inference
     });
     
+    console.log('BLIP API response status:', resp.status);
+    console.log('BLIP API response data:', JSON.stringify(resp.data).substring(0, 200));
+    
     // Handle different response formats
     if (Array.isArray(resp.data) && resp.data.length > 0) {
       if (resp.data[0].generated_text) {
+        console.log('Caption generated:', resp.data[0].generated_text);
         return resp.data[0].generated_text;
       }
       // Sometimes the response is nested differently
       if (resp.data[0].label || resp.data[0].text) {
-        return resp.data[0].label || resp.data[0].text;
+        const caption = resp.data[0].label || resp.data[0].text;
+        console.log('Caption generated (alternative format):', caption);
+        return caption;
       }
     }
     
     // Handle single object response
     if (resp.data.generated_text) {
+      console.log('Caption generated (single object):', resp.data.generated_text);
       return resp.data.generated_text;
     }
     
     // If model is loading, wait and retry
-    if (resp.data.error && resp.data.error.includes('loading')) {
-      console.log('Model is loading, waiting 10 seconds...');
-      await new Promise(resolve => setTimeout(resolve, 10000));
-      // Retry once
-      const retryResp = await axios.post(endpoint, imageData, {
-        headers: {
-          "Authorization": `Bearer ${HF_API_TOKEN}`,
-          "Content-Type": "application/octet-stream"
-        },
-        timeout: 30000
-      });
-      if (Array.isArray(retryResp.data) && retryResp.data.length > 0 && retryResp.data[0].generated_text) {
-        return retryResp.data[0].generated_text;
+    if (resp.data.error) {
+      console.log('BLIP API error response:', resp.data.error);
+      if (resp.data.error.includes('loading')) {
+        console.log('Model is loading, waiting 10 seconds...');
+        await new Promise(resolve => setTimeout(resolve, 10000));
+        // Retry once
+        console.log('Retrying image captioning...');
+        const retryResp = await axios.post(endpoint, imageData, {
+          headers: {
+            "Authorization": `Bearer ${HF_API_TOKEN}`,
+            "Content-Type": "application/octet-stream"
+          },
+          timeout: 30000
+        });
+        console.log('Retry response:', JSON.stringify(retryResp.data).substring(0, 200));
+        if (Array.isArray(retryResp.data) && retryResp.data.length > 0 && retryResp.data[0].generated_text) {
+          console.log('Caption generated on retry:', retryResp.data[0].generated_text);
+          return retryResp.data[0].generated_text;
+        }
       }
     }
     
-    console.warn('Unexpected response format from BLIP API:', resp.data);
+    console.warn('Unexpected response format from BLIP API:', JSON.stringify(resp.data).substring(0, 500));
     return null; // Return null instead of error message
   }catch(e){
-    console.error('BLIP caption error', e.response?.data || e.message);
+    console.error('BLIP caption error - Status:', e.response?.status);
+    console.error('BLIP caption error - Data:', e.response?.data);
+    console.error('BLIP caption error - Message:', e.message);
     // Return null instead of error message to avoid storing error text as content
     return null;
   }
