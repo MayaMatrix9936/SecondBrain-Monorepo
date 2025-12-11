@@ -295,7 +295,20 @@ const worker = new Worker('ingest', async job => {
         const p = await pdfParse(buf);
         text = p.text||'';
       } else if(sourceType==='audio'){
-        text = await transcribeAudio(localPath);
+        try {
+          text = await transcribeAudio(localPath);
+          if (!text || text.trim().length === 0) {
+            console.warn('Audio transcription returned empty text');
+            text = '';
+          }
+        } catch (e) {
+          console.error('Audio transcription failed:', e.message);
+          // Don't create chunks with error messages, but mark document with error
+          text = '';
+          if (doc) {
+            doc.processingError = `Audio transcription failed: ${e.message}`;
+          }
+        }
       } else if(sourceType==='image'){
         caption = await blipCaptionImage(localPath);
         if(caption) {
