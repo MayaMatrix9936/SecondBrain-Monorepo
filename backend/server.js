@@ -161,10 +161,12 @@ async function blipCaptionImage(localPath){
   const imageData = fs.readFileSync(localPath);
   console.log('Image file size:', imageData.length, 'bytes');
   
-  // Try different endpoint formats
+  // Try different endpoint formats - HuggingFace API has changed
+  // Try the inference endpoint directly, and also try with /pipeline endpoint
   const endpoints = [
-    `https://router.huggingface.co/models/${HF_BLIP_MODEL}`,
-    `https://api-inference.huggingface.co/models/${HF_BLIP_MODEL}`
+    `https://api-inference.huggingface.co/pipeline/image-to-text/${HF_BLIP_MODEL}`,
+    `https://api-inference.huggingface.co/models/${HF_BLIP_MODEL}`,
+    `https://router.huggingface.co/models/${HF_BLIP_MODEL}`
   ];
   
   let resp;
