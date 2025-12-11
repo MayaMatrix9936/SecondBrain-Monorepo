@@ -119,6 +119,20 @@ async function chromaUpsert(collection, items){
   }
 }
 
+async function chromaDelete(collection, ids){
+  try {
+    if (!CHROMA_URL || CHROMA_URL === 'http://localhost:8000') {
+      console.warn('CHROMA_URL not set, skipping ChromaDB delete');
+      return { ok: false };
+    }
+    const resp = await axios.post(`${CHROMA_URL}/delete`, { collection, ids });
+    return resp.data;
+  } catch (e) {
+    console.error('ChromaDB delete error:', e.message);
+    return { ok: false, error: e.message };
+  }
+}
+
 function chunkText(text, approxWords=400){
   const words = text.split(/\s+/);
   const chunks=[];
@@ -382,6 +396,58 @@ app.get('/docs', (req, res) => {
     indexedAt: d.processedAt   // FRONTEND COMPAT FIX
   }));
   res.json(docs);
+});
+
+app.delete('/docs/:docId', async (req, res) => {
+  try {
+    const { docId } = req.params;
+    const userId = req.headers['x-user-id'] || 'demo-user';
+    const storage = readStorage();
+    
+    // Find the document
+    const docIndex = storage.docs.findIndex(d => d.docId === docId);
+    if (docIndex === -1) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+    
+    const doc = storage.docs[docIndex];
+    
+    // Find all chunks associated with this document
+    const chunksToDelete = storage.chunks.filter(c => c.docId === docId);
+    const chunkIds = chunksToDelete.map(c => c.chunkId);
+    
+    // Delete from Chroma if there are chunks
+    if (chunkIds.length > 0) {
+      await chromaDelete(userId, chunkIds);
+    }
+    
+    // Delete uploaded file if it exists
+    if (doc.originalUri && doc.originalUri.startsWith('/') && fs.existsSync(doc.originalUri)) {
+      try {
+        fs.unlinkSync(doc.originalUri);
+      } catch(e) {
+        console.warn('Could not delete file:', doc.originalUri, e.message);
+      }
+    }
+    
+    // Remove document from storage
+    storage.docs.splice(docIndex, 1);
+    
+    // Remove chunks from storage
+    storage.chunks = storage.chunks.filter(c => c.docId !== docId);
+    
+    // Remove graph nodes and edges related to this document
+    const docNodeId = docId;
+    storage.graph.nodes = storage.graph.nodes.filter(n => n.id !== docNodeId);
+    storage.graph.edges = storage.graph.edges.filter(e => e.from !== docNodeId && e.to !== docNodeId);
+    
+    writeStorage(storage);
+    
+    res.json({ ok: true, deleted: { docId, chunks: chunkIds.length } });
+  } catch(e) {
+    console.error('Delete error:', e);
+    res.status(500).json({ error: 'Delete failed', details: e.message });
+  }
 });
 
 // Chat history endpoints
