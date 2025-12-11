@@ -692,18 +692,24 @@ app.post('/query', async (req,res)=>{
     }
     
     const answer = await openaiChat(prompt);
-    // Include document metadata in sources
-    const sourcesWithMetadata = top.map(t => {
+    // Include document metadata in sources and deduplicate by docId (keep highest score)
+    const sourcesMap = new Map();
+    top.forEach(t => {
       const doc = storage.docs.find(d => d.docId === t.docId);
-      return {
-        docId: t.docId,
-        chunkId: t.chunkId,
-        score: t.score,
-        filename: doc?.filename || doc?.title || null,
-        originalUri: doc?.originalUri || null,
-        sourceType: doc?.sourceType || null
-      };
+      const existing = sourcesMap.get(t.docId);
+      // Keep the source with the highest score
+      if (!existing || t.score > existing.score) {
+        sourcesMap.set(t.docId, {
+          docId: t.docId,
+          chunkId: t.chunkId,
+          score: t.score,
+          filename: doc?.filename || doc?.title || null,
+          originalUri: doc?.originalUri || null,
+          sourceType: doc?.sourceType || null
+        });
+      }
     });
+    const sourcesWithMetadata = Array.from(sourcesMap.values());
     res.json({ answer, sources: sourcesWithMetadata });
   }catch(e){ console.error('query err', e.response?.data || e.message); res.status(500).json({ error:'query failed' }); }
 });
