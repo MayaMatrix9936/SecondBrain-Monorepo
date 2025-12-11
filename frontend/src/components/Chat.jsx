@@ -519,7 +519,7 @@ export default function Chat() {
                   <div className="flex-1">
                     {msg.role === 'assistant' ? (
                       <div 
-                        className="whitespace-pre-wrap leading-relaxed prose prose-sm dark:prose-invert max-w-none"
+                        className="whitespace-pre-wrap leading-relaxed max-w-none"
                         dangerouslySetInnerHTML={{ __html: renderMarkdown(msg.content) }}
                       />
                     ) : (
