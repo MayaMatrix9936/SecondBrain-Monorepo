@@ -52,11 +52,44 @@ async function embedText(text){
 }
 
 async function transcribeAudio(localPath){
-  const fm = new FormData();
-  fm.append('file', fs.createReadStream(localPath));
-  fm.append('model','whisper-1');
-  const resp = await axios.post('https://api.openai.com/v1/audio/transcriptions', fm, { headers:{ Authorization:`Bearer ${OPENAI_KEY}`, ...fm.getHeaders() }, maxContentLength:Infinity, maxBodyLength:Infinity });
-  return resp.data.text;
+  try {
+    console.log('Starting audio transcription for:', localPath);
+    
+    // Check if file exists
+    if (!fs.existsSync(localPath)) {
+      throw new Error(`Audio file not found: ${localPath}`);
+    }
+    
+    const fileStats = fs.statSync(localPath);
+    console.log('Audio file size:', fileStats.size, 'bytes');
+    
+    const fm = new FormData();
+    fm.append('file', fs.createReadStream(localPath));
+    fm.append('model', 'whisper-1');
+    
+    console.log('Sending audio to OpenAI Whisper API...');
+    const resp = await axios.post(
+      'https://api.openai.com/v1/audio/transcriptions', 
+      fm, 
+      { 
+        headers: { 
+          Authorization: `Bearer ${OPENAI_KEY}`, 
+          ...fm.getHeaders() 
+        }, 
+        maxContentLength: Infinity, 
+        maxBodyLength: Infinity,
+        timeout: 300000 // 5 minute timeout for long audio files
+      }
+    );
+    
+    const transcribedText = resp.data.text;
+    console.log('Audio transcription successful, length:', transcribedText.length, 'characters');
+    return transcribedText;
+  } catch (e) {
+    console.error('Audio transcription error:', e.response?.data || e.message);
+    console.error('Error details:', e.response?.status, e.response?.statusText);
+    throw e; // Re-throw so caller can handle it
+  }
 }
 
 async function scrapeUrl(url){
