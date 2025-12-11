@@ -146,10 +146,9 @@ async function blipCaptionImage(localPath){
   ];
   
   let resp;
-  let endpoint;
   let lastError;
   
-  for (endpoint of endpoints) {
+  for (const endpoint of endpoints) {
     try {
       resp = await axios.post(endpoint, imageData, {
         headers: {
