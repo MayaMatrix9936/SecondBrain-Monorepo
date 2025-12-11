@@ -133,98 +133,10 @@ async function scrapeUrl(url){
 }
 
 async function blipCaptionImage(localPath){
-  if(!HF_API_TOKEN) {
-    console.warn('HF_API_TOKEN not set, cannot generate image captions');
-    return null; // Return null instead of error message to avoid storing error text
-  }
-  const imageData = fs.readFileSync(localPath);
-  
-  // Try different endpoint formats
-  const endpoints = [
-    `https://router.huggingface.co/models/${HF_BLIP_MODEL}`,
-    `https://api-inference.huggingface.co/models/${HF_BLIP_MODEL}`
-  ];
-  
-  let resp;
-  let lastError;
-  let workingEndpoint = null;
-  
-  for (const endpoint of endpoints) {
-    try {
-      resp = await axios.post(endpoint, imageData, {
-        headers: {
-          "Authorization": `Bearer ${HF_API_TOKEN}`,
-          "Content-Type": "application/octet-stream"
-        },
-        timeout: 30000,
-        validateStatus: function (status) {
-          return status < 600;
-        }
-      });
-      
-      if (resp.status === 200 || resp.status === 201) {
-        workingEndpoint = endpoint;
-        break;
-      } else if (resp.status === 503) {
-        workingEndpoint = endpoint;
-        break;
-      } else {
-        lastError = new Error(`Status ${resp.status}`);
-        continue;
-      }
-    } catch (error) {
-      lastError = error;
-      continue;
-    }
-  }
-  
-  if (!resp || (resp.status !== 200 && resp.status !== 201 && resp.status !== 503)) {
-    throw lastError || new Error('All HuggingFace endpoints failed');
-  }
-    
-    // Handle different response formats
-    if (Array.isArray(resp.data) && resp.data.length > 0) {
-      if (resp.data[0].generated_text) {
-        return resp.data[0].generated_text;
-      }
-      // Sometimes the response is nested differently
-      if (resp.data[0].label || resp.data[0].text) {
-        return resp.data[0].label || resp.data[0].text;
-      }
-    }
-    
-    // Handle single object response
-    if (resp.data.generated_text) {
-      return resp.data.generated_text;
-    }
-    
-    // If model is loading, wait and retry
-    if (resp.data.error && resp.data.error.includes('loading')) {
-      console.log('Model is loading, waiting 10 seconds...');
-      await new Promise(resolve => setTimeout(resolve, 10000));
-      // Retry once
-      const retryEndpoint = workingEndpoint && workingEndpoint.includes('router') 
-        ? `https://api-inference.huggingface.co/models/${HF_BLIP_MODEL}`
-        : (workingEndpoint || `https://api-inference.huggingface.co/models/${HF_BLIP_MODEL}`);
-      const retryResp = await axios.post(retryEndpoint, imageData, {
-        headers: {
-          "Authorization": `Bearer ${HF_API_TOKEN}`,
-          "Content-Type": "application/octet-stream"
-        },
-        timeout: 30000
-      });
-      if (Array.isArray(retryResp.data) && retryResp.data.length > 0 && retryResp.data[0].generated_text) {
-        return retryResp.data[0].generated_text;
-      }
-    }
-    
-    console.warn('Unexpected response format from BLIP API:', resp.data);
-    return null; // Return null instead of error message
-  }catch(e){
-    console.error('BLIP caption error', e.response?.data || e.message);
-    // Return null instead of error message to avoid storing error text as content
-    return null;
-  }
+  // HuggingFace Inference API is currently unavailable/deprecated
+  // Image captioning is disabled until an alternative solution is implemented
+  console.warn('Image captioning via HuggingFace is currently unavailable - API endpoints have been deprecated');
+  return null;
 }
 
 async function chromaUpsert(collection, items){

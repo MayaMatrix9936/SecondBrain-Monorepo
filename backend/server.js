@@ -272,14 +272,14 @@ async function blipCaptionImage(localPath){
     }
     
     console.warn('Unexpected response format from BLIP API:', JSON.stringify(resp.data).substring(0, 500));
-    return null; // Return null instead of error message
+    return null;
   } catch(e){
     console.error('BLIP caption error - Status:', e.response?.status);
     console.error('BLIP caption error - Data:', e.response?.data);
     console.error('BLIP caption error - Message:', e.message);
-    // Return null instead of error message to avoid storing error text as content
     return null;
   }
+  */
 }
 
 async function chromaUpsert(collection, items){
