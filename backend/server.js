@@ -72,21 +72,52 @@ async function transcribeAudio(localPath){
 
 async function scrapeUrl(url){
   try{
-    const r = await axios.get(url);
+    // Add proper headers to avoid being blocked
+    const r = await axios.get(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1'
+      },
+      timeout: 10000, // 10 second timeout
+      maxRedirects: 5
+    });
     const $ = cheerio.load(r.data);
     let text='';
-    $('p').each((i,el)=> text += $(el).text() + '\n\n');
-    if(!text.trim()) text = r.data.replace(/<[^>]*>/g,' ');
-    const title = $('head title').text()||url;
-    return { title, text };
+    // Extract text from various elements
+    $('p, article, main, .content, .post, .article').each((i,el)=> {
+      const txt = $(el).text().trim();
+      if(txt.length > 20) text += txt + '\n\n';
+    });
+    // Fallback: extract all text if no paragraphs found
+    if(!text.trim()) {
+      // Remove script and style elements
+      $('script, style, nav, header, footer').remove();
+      text = $('body').text().replace(/\s+/g, ' ').trim();
+    }
+    const title = $('head title').text() || $('h1').first().text() || url;
+    // Clean up text
+    text = text.replace(/\s+/g, ' ').trim();
+    if(!text || text.length < 10) {
+      throw new Error('No meaningful content extracted from URL');
+    }
+    return { title: title.trim() || url, text };
   }catch(e){
-    console.error('scrape err', e);
-    return { title:url, text:'' };
+    console.error('scrape err', e.message || e);
+    // Return a more informative error message instead of empty text
+    const errorMsg = `Failed to scrape URL: ${e.message || 'Unknown error'}. The URL may require authentication, JavaScript rendering, or may be inaccessible.`;
+    return { title: url, text: errorMsg };
   }
 }
 
 async function blipCaptionImage(localPath){
-  if(!HF_API_TOKEN) return 'Image (no BLIP token)';
+  if(!HF_API_TOKEN) {
+    console.warn('HF_API_TOKEN not set, cannot generate image captions');
+    return null; // Return null instead of error message to avoid storing error text
+  }
   const endpoint = `https://api-inference.huggingface.co/models/${HF_BLIP_MODEL}`;
   const imageData = fs.readFileSync(localPath);
   try{
@@ -94,15 +125,49 @@ async function blipCaptionImage(localPath){
       headers: {
         "Authorization": `Bearer ${HF_API_TOKEN}`,
         "Content-Type": "application/octet-stream"
-      }
+      },
+      timeout: 30000 // 30 second timeout for model inference
     });
-    if (Array.isArray(resp.data) && resp.data.length > 0 && resp.data[0].generated_text) {
-      return resp.data[0].generated_text;
+    
+    // Handle different response formats
+    if (Array.isArray(resp.data) && resp.data.length > 0) {
+      if (resp.data[0].generated_text) {
+        return resp.data[0].generated_text;
+      }
+      // Sometimes the response is nested differently
+      if (resp.data[0].label || resp.data[0].text) {
+        return resp.data[0].label || resp.data[0].text;
+      }
     }
-    return 'Image (no caption)';
+    
+    // Handle single object response
+    if (resp.data.generated_text) {
+      return resp.data.generated_text;
+    }
+    
+    // If model is loading, wait and retry
+    if (resp.data.error && resp.data.error.includes('loading')) {
+      console.log('Model is loading, waiting 10 seconds...');
+      await new Promise(resolve => setTimeout(resolve, 10000));
+      // Retry once
+      const retryResp = await axios.post(endpoint, imageData, {
+        headers: {
+          "Authorization": `Bearer ${HF_API_TOKEN}`,
+          "Content-Type": "application/octet-stream"
+        },
+        timeout: 30000
+      });
+      if (Array.isArray(retryResp.data) && retryResp.data.length > 0 && retryResp.data[0].generated_text) {
+        return retryResp.data[0].generated_text;
+      }
+    }
+    
+    console.warn('Unexpected response format from BLIP API:', resp.data);
+    return null; // Return null instead of error message
   }catch(e){
     console.error('BLIP caption error', e.response?.data || e.message);
-    return 'Image (caption error)';
+    // Return null instead of error message to avoid storing error text as content
+    return null;
   }
 }
 
@@ -201,7 +266,12 @@ async function processJob(jobData) {
         text = await transcribeAudio(localPath);
       } else if(sourceType==='image'){
         caption = await blipCaptionImage(localPath);
-        text = caption;
+        if(caption) {
+          text = caption;
+        } else {
+          // If captioning failed, use a generic description instead of error message
+          text = 'An image was uploaded but automatic captioning is not available. The image content cannot be described automatically.';
+        }
       } else {
         try{ text = fs.readFileSync(localPath,'utf8'); }catch(e){ text=''; }
       }
@@ -255,7 +325,9 @@ async function processJob(jobData) {
       return { ok:true };
     } else if(d.jobType==='ingest_url'){
       const scraped = await scrapeUrl(d.url);
-      const chunks = chunkText(scraped.text||'', 400);
+      // Always create chunks even if scraping failed, so user knows what happened
+      const textToChunk = scraped.text || `URL: ${d.url}\n\nNote: Unable to extract content from this URL. It may require authentication, JavaScript rendering, or may be inaccessible.`;
+      const chunks = chunkText(textToChunk, 400);
       const chromaItems=[];
       for(const ch of chunks){
         const emb = await embedText(ch);
@@ -383,7 +455,15 @@ app.post('/query', async (req,res)=>{
     scored.sort((a,b)=>b.score-a.score);
     const top = scored.slice(0,k);
     const ctx = top.map((t,i)=>`Source ${i+1} (doc:${t.docId}, score:${t.score.toFixed(3)}):\n${t.text}`).join('\n---\n');
-    const prompt = `You are an assistant. Use only the context below to answer the question.\n\n${ctx}\n\nQuestion: ${query}`;
+    
+    // Improved prompt that handles edge cases better
+    let prompt = `You are a helpful assistant. Use the context below to answer the question. `;
+    if(ctx.trim().length === 0 || top.length === 0) {
+      prompt += `\n\nNote: No relevant context was found in the uploaded documents. Please inform the user that you don't have information about this topic in the uploaded documents, and suggest they upload relevant documents or try a different question.`;
+    } else {
+      prompt += `\n\nContext:\n${ctx}\n\nQuestion: ${query}\n\nInstructions: If the context contains error messages (like "Failed to scrape URL" or "caption error"), inform the user that there was an issue processing that content and suggest they try uploading it again or provide the content directly.`;
+    }
+    
     const answer = await openaiChat(prompt);
     res.json({ answer, sources: top.map(t=>({docId:t.docId, chunkId:t.chunkId, score:t.score})) });
   }catch(e){ console.error('query err', e.response?.data || e.message); res.status(500).json({ error:'query failed' }); }
