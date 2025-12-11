@@ -510,6 +510,46 @@ async function openaiChat(prompt){
   const resp = await axios.post('https://api.openai.com/v1/chat/completions', { model:'gpt-4o-mini', messages:[{ role:'user', content: prompt }], temperature:0.2 }, { headers:{ Authorization:`Bearer ${OPENAI_KEY}` } });
   return resp.data.choices[0].message.content;
 }
+
+async function* openaiChatStream(prompt){
+  try {
+    const resp = await axios.post(
+      'https://api.openai.com/v1/chat/completions',
+      {
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.2,
+        stream: true
+      },
+      {
+        headers: { Authorization: `Bearer ${OPENAI_KEY}` },
+        responseType: 'stream'
+      }
+    );
+
+    for await (const chunk of resp.data) {
+      const lines = chunk.toString().split('\n').filter(line => line.trim() !== '');
+      for (const line of lines) {
+        const message = line.replace(/^data: /, '');
+        if (message === '[DONE]') {
+          return;
+        }
+        try {
+          const parsed = JSON.parse(message);
+          const content = parsed.choices?.[0]?.delta?.content;
+          if (content) {
+            yield content;
+          }
+        } catch (e) {
+          // Skip invalid JSON lines
+        }
+      }
+    }
+  } catch (e) {
+    console.error('Streaming error:', e.message);
+    throw e;
+  }
+}
 async function chromaQuery(collection, queryEmbedding, n){
   const resp = await axios.post(`${CHROMA_URL}/query`, { collection, query_embedding: queryEmbedding, n_results: n });
   return resp.data.results || [];
@@ -569,8 +609,14 @@ app.post('/upload', upload.single('file'), async (req,res)=>{
 
 app.post('/query', async (req,res)=>{
   try{
-    const { userId='demo-user', query, k=6, from, to } = req.body;
+    const { userId='demo-user', query, k=6, from, to, stream } = req.body;
     if(!query) return res.status(400).json({ error:'no query' });
+    
+    // Check if streaming is requested
+    if(stream) {
+      return handleStreamingQuery(req, res, userId, query, k, from, to);
+    }
+    
     const storage = readStorage();
 
     let fromDate = from ? new Date(from) : null;
@@ -649,6 +695,112 @@ app.post('/query', async (req,res)=>{
     res.json({ answer, sources: top.map(t=>({docId:t.docId, chunkId:t.chunkId, score:t.score})) });
   }catch(e){ console.error('query err', e.response?.data || e.message); res.status(500).json({ error:'query failed' }); }
 });
+
+async function handleStreamingQuery(req, res, userId, query, k, from, to) {
+  try {
+    const storage = readStorage();
+    
+    let fromDate = from ? new Date(from) : null;
+    let toDate = to ? new Date(to) : null;
+    if(!fromDate || !toDate){
+      const parsed = chrono.parse(query);
+      if(parsed.length>0){
+        if(parsed[0].start) fromDate = parsed[0].start.date();
+        if(parsed[0].end) toDate = parsed[0].end.date();
+      }
+    }
+
+    const qEmb = await embedQuery(query);
+    const chromaResults = await chromaQuery(userId, qEmb, Math.max(k*3, 15));
+    const now = Date.now();
+    let scored = [];
+    for(const r of chromaResults){
+      const cid = r.id;
+      const chunk = storage.chunks.find(c=>c.chunkId===cid);
+      if(!chunk) continue;
+      
+      const chunkText = chunk.text || '';
+      if(chunkText.includes('Failed to scrape') || 
+         chunkText.includes('caption error') || 
+         chunkText.includes('automatic captioning is not available') ||
+         chunkText.includes('cannot be described automatically')) {
+        continue;
+      }
+      
+      if(fromDate || toDate){
+        const created = new Date(chunk.createdAt || Date.now());
+        if(fromDate && created < fromDate) continue;
+        if(toDate && created > toDate) continue;
+      }
+      const kw = keywordScore(query, chunkText);
+      const ageHours = (now - new Date(chunk.createdAt || now).getTime()) / (1000*60*60);
+      const recencyBoost = Math.max(0, 1 - Math.min(ageHours/24/30, 1));
+      const baseScore = 1 - (r.distance || 0);
+      const combined = baseScore*0.85 + kw*0.15 + recencyBoost*0.1;
+      scored.push({ chunkId: cid, docId: chunk.docId, text: chunkText, score: combined });
+    }
+    scored.sort((a,b)=>b.score-a.score);
+    const top = scored.slice(0,k);
+    const ctx = top.map((t,i)=>`Source ${i+1} (doc:${t.docId}, score:${t.score.toFixed(3)}):\n${t.text}`).join('\n---\n');
+    
+    let prompt = `You are a helpful assistant. Use the context below to answer the question. `;
+    if(ctx.trim().length === 0 || top.length === 0) {
+      const failedImages = storage.docs.filter(d => d.sourceType === 'image' && d.processingError);
+      const failedUrls = storage.docs.filter(d => d.sourceType === 'url' && d.processingError);
+      const isImageQuery = /image|picture|photo|what.*image|describe.*image/i.test(query);
+      const isUrlQuery = /url|link|website|web page|what.*url|what.*link|summarize.*url/i.test(query);
+      
+      if(isImageQuery && failedImages.length > 0) {
+        const imageNames = failedImages.map(d => d.filename || d.title).join(', ');
+        prompt += `\n\nNote: The user is asking about an image. I found ${failedImages.length} image document(s) in the system (${imageNames}), but automatic captioning failed for them. This means the images were uploaded but their content could not be automatically described. Please inform the user that the image(s) were uploaded but captioning is not available. To enable image captioning, they need to configure a HuggingFace API token (HF_API_TOKEN) in the backend environment variables. Without this token, images cannot be processed.`;
+      } else if(isUrlQuery && failedUrls.length > 0) {
+        const urlList = failedUrls.map(d => d.originalUri || d.title).join(', ');
+        prompt += `\n\nNote: The user is asking about a URL. I found ${failedUrls.length} URL document(s) in the system (${urlList}), but content extraction failed for them. This typically happens when URLs require authentication (like dashboard pages), use heavy JavaScript rendering, or have access restrictions. Please inform the user that the URL(s) were uploaded but their content could not be extracted. Suggest they either: 1) Provide the content directly as text, 2) Check if the URL requires login/authentication, or 3) Try a different publicly accessible URL.`;
+      } else if(isImageQuery) {
+        prompt += `\n\nNote: The user is asking about an image, but no image documents were found in the uploaded documents. Please inform them that no images have been uploaded yet, or suggest they upload an image.`;
+      } else if(isUrlQuery) {
+        prompt += `\n\nNote: The user is asking about a URL, but no URL documents were found in the uploaded documents. Please inform them that no URLs have been uploaded yet, or suggest they upload a URL.`;
+      } else {
+        prompt += `\n\nNote: No relevant context was found in the uploaded documents. Please inform the user that you don't have information about this topic in the uploaded documents, and suggest they upload relevant documents or try a different question.`;
+      }
+    } else {
+      prompt += `\n\nContext:\n${ctx}\n\nQuestion: ${query}\n\nAnswer the question based on the context provided.`;
+    }
+    
+    // Set headers for Server-Sent Events
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.setHeader('X-Accel-Buffering', 'no');
+    
+    // Send sources first
+    res.write(`data: ${JSON.stringify({ type: 'sources', data: top.map(t=>({docId:t.docId, chunkId:t.chunkId, score:t.score})) })}\n\n`);
+    
+    // Stream the response
+    let fullAnswer = '';
+    try {
+      for await (const chunk of openaiChatStream(prompt)) {
+        fullAnswer += chunk;
+        res.write(`data: ${JSON.stringify({ type: 'chunk', data: chunk })}\n\n`);
+      }
+      
+      res.write(`data: ${JSON.stringify({ type: 'done', data: fullAnswer })}\n\n`);
+    } catch (streamError) {
+      console.error('Streaming error:', streamError);
+      res.write(`data: ${JSON.stringify({ type: 'error', data: streamError.message })}\n\n`);
+    }
+    
+    res.end();
+  } catch (e) {
+    console.error('Streaming query error:', e);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'streaming query failed' });
+    } else {
+      res.write(`data: ${JSON.stringify({ type: 'error', data: e.message })}\n\n`);
+      res.end();
+    }
+  }
+}
 
 app.get('/docs', (req, res) => {
   const stored = readStorage().docs || [];

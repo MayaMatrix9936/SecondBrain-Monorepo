@@ -143,24 +143,102 @@ export default function Chat() {
     setInput('');
     setLoading(true);
 
+    // Create placeholder for streaming response
+    const assistantMessage = {
+      role: 'assistant',
+      content: '',
+      sources: [],
+      streaming: true
+    };
+    const messagesWithPlaceholder = [...newMessages, assistantMessage];
+    setMessages(messagesWithPlaceholder);
+
     try {
-      const response = await axios.post(`${API_URL}/query`, {
-        userId: 'demo-user',
-        query: input,
-        k: 6
+      // Use streaming by default
+      const response = await fetch(`${API_URL}/query`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': 'demo-user'
+        },
+        body: JSON.stringify({
+          userId: 'demo-user',
+          query: input,
+          k: 6,
+          stream: true
+        })
       });
 
-      const assistantMessage = {
-        role: 'assistant',
-        content: response.data.answer,
-        sources: response.data.sources || []
-      };
+      if (!response.ok) {
+        throw new Error('Streaming request failed');
+      }
 
-      const updatedMessages = [...newMessages, assistantMessage];
-      setMessages(updatedMessages);
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let sources = [];
+      let fullContent = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              
+              if (data.type === 'sources') {
+                sources = data.data || [];
+              } else if (data.type === 'chunk') {
+                fullContent += data.data;
+                // Update message with streaming content
+                setMessages(prev => {
+                  const updated = [...prev];
+                  const lastMsg = updated[updated.length - 1];
+                  if (lastMsg && lastMsg.role === 'assistant') {
+                    lastMsg.content = fullContent;
+                    lastMsg.sources = sources;
+                  }
+                  return updated;
+                });
+              } else if (data.type === 'done') {
+                fullContent = data.data || fullContent;
+                // Final update
+                setMessages(prev => {
+                  const updated = [...prev];
+                  const lastMsg = updated[updated.length - 1];
+                  if (lastMsg && lastMsg.role === 'assistant') {
+                    lastMsg.content = fullContent;
+                    lastMsg.sources = sources;
+                    lastMsg.streaming = false;
+                  }
+                  return updated;
+                });
+              } else if (data.type === 'error') {
+                throw new Error(data.data || 'Streaming error');
+              }
+            } catch (parseError) {
+              console.error('Error parsing SSE data:', parseError);
+            }
+          }
+        }
+      }
+
+      // Final message state
+      const finalMessages = [...newMessages, {
+        role: 'assistant',
+        content: fullContent,
+        sources: sources
+      }];
+      setMessages(finalMessages);
       
       // Save conversation after each exchange
-      await saveConversation(updatedMessages);
+      await saveConversation(finalMessages);
     } catch (error) {
       console.error('Query error:', error);
       showError('Failed to get response. Please try again.');
