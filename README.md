@@ -217,7 +217,7 @@ This project is private and proprietary.
 
 ## 👥 Authors
 
-- SecondBrain Development Team
+- MayaMatrix9936
 
 ## 🙏 Acknowledgments
 
