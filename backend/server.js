@@ -357,13 +357,28 @@ async function processJob(jobData) {
       writeStorage(storage);
       return { ok:true };
     } else if(d.jobType==='ingest_url'){
-      const scraped = await scrapeUrl(d.url);
-      // Check if scraping failed - if text starts with "Failed to scrape", don't create chunks
-      let textToChunk = scraped.text || '';
-      if(textToChunk.startsWith('Failed to scrape')) {
-        // Don't create chunks with error messages - just mark as processed
-        textToChunk = '';
+      // Check if it's a YouTube URL - these need special handling
+      const isYouTube = /youtube\.com|youtu\.be/i.test(d.url);
+      
+      let textToChunk = '';
+      let scraped = { title: d.url, text: '' };
+      
+      if(isYouTube) {
+        // YouTube URLs can't be scraped - create a searchable chunk with URL info
+        console.log('YouTube URL detected - creating metadata chunk');
+        textToChunk = `YouTube URL: ${d.url}\n\nNote: YouTube videos cannot be automatically scraped. The video content requires manual description or the video URL needs to be accessed directly.`;
+        scraped.title = `YouTube Video: ${d.url}`;
+      } else {
+        scraped = await scrapeUrl(d.url);
+        textToChunk = scraped.text || '';
+        
+        // If scraping failed, still create a minimal searchable chunk
+        if(textToChunk.startsWith('Failed to scrape') || !textToChunk) {
+          console.log('URL scraping failed - creating metadata chunk');
+          textToChunk = `URL: ${d.url}\n\nNote: Content extraction from this URL failed. The URL may require authentication, use heavy JavaScript rendering, or have access restrictions.`;
+        }
       }
+      
       const chunks = textToChunk ? chunkText(textToChunk, 400) : [];
       const chromaItems=[];
       for(const ch of chunks){
@@ -378,9 +393,9 @@ async function processJob(jobData) {
         doc3.processedAt = now; 
         doc3.title = scraped.title||doc3.title||d.url;
         if(!doc3.filename && scraped.title) doc3.filename = scraped.title;
-        // Mark document with processing status if scraping failed
-        if(!textToChunk && scraped.text && scraped.text.startsWith('Failed to scrape')) {
-          doc3.processingError = 'URL content extraction failed';
+        // Mark document with processing status if scraping failed (but we still created chunks)
+        if(isYouTube || (scraped.text && scraped.text.startsWith('Failed to scrape'))) {
+          doc3.processingError = isYouTube ? 'YouTube URL - content cannot be automatically extracted' : 'URL content extraction failed';
         }
       }
       writeStorage(storage);
