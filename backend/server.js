@@ -791,18 +791,24 @@ async function handleStreamingQuery(req, res, userId, query, k, from, to) {
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
     
-    // Send sources first with document metadata
-    const sourcesWithMetadata = top.map(t => {
+    // Send sources first with document metadata, deduplicated by docId (keep highest score)
+    const sourcesMap = new Map();
+    top.forEach(t => {
       const doc = storage.docs.find(d => d.docId === t.docId);
-      return {
-        docId: t.docId,
-        chunkId: t.chunkId,
-        score: t.score,
-        filename: doc?.filename || doc?.title || null,
-        originalUri: doc?.originalUri || null,
-        sourceType: doc?.sourceType || null
-      };
+      const existing = sourcesMap.get(t.docId);
+      // Keep the source with the highest score
+      if (!existing || t.score > existing.score) {
+        sourcesMap.set(t.docId, {
+          docId: t.docId,
+          chunkId: t.chunkId,
+          score: t.score,
+          filename: doc?.filename || doc?.title || null,
+          originalUri: doc?.originalUri || null,
+          sourceType: doc?.sourceType || null
+        });
+      }
     });
+    const sourcesWithMetadata = Array.from(sourcesMap.values());
     res.write(`data: ${JSON.stringify({ type: 'sources', data: sourcesWithMetadata })}\n\n`);
     
     // Stream the response
