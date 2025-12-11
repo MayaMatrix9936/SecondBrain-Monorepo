@@ -171,7 +171,7 @@ async function transcribeAudio(localPath, filename = null){
     // Read file as buffer and append with explicit filename
     // OpenAI Whisper API requires the filename to determine the format
     const fileBuffer = fs.readFileSync(localPath);
-    const fm = new FormData();
+  const fm = new FormData();
     
     // Remove leading dot from extension for content-type (e.g., .mp3 -> mp3)
     const contentTypeExt = fileExtension.substring(1) || 'mp3';
@@ -290,7 +290,7 @@ async function captionImage(localPath){
   // Use OpenAI Vision API for image captioning
   try {
     console.log('Attempting image captioning with OpenAI Vision API');
-    const imageData = fs.readFileSync(localPath);
+  const imageData = fs.readFileSync(localPath);
     const imageBase64 = imageData.toString('base64');
     
     // Determine image MIME type from file extension
@@ -434,7 +434,7 @@ async function processJob(jobData) {
         text = p.text||'';
       } else if(sourceType==='audio'){
         try {
-          text = await transcribeAudio(localPath);
+        text = await transcribeAudio(localPath);
           if (!text || text.trim().length === 0) {
             console.warn('Audio transcription returned empty text');
             text = '';
@@ -450,7 +450,7 @@ async function processJob(jobData) {
       } else if(sourceType==='image'){
         caption = await captionImage(localPath);
         if(caption) {
-          text = caption;
+        text = caption;
         } else {
           // If captioning failed, don't create chunks with error messages
           // The document will exist but won't have searchable content
@@ -470,10 +470,10 @@ async function processJob(jobData) {
         for (let i = 0; i < chunks.length; i++) {
           const ch = chunks[i];
           const emb = embeddings[i];
-          const chunkId = uuidv4();
-          storage.chunks.push({ chunkId, docId: d.docId, userId: d.userId, text: ch, createdAt: now, sourceType });
-          chromaItems.push({ id: chunkId, embedding: emb, metadata: { docId: d.docId, userId: d.userId, sourceType }, document: ch });
-        }
+        const chunkId = uuidv4();
+        storage.chunks.push({ chunkId, docId: d.docId, userId: d.userId, text: ch, createdAt: now, sourceType });
+        chromaItems.push({ id: chunkId, embedding: emb, metadata: { docId: d.docId, userId: d.userId, sourceType }, document: ch });
+      }
       }
       
       if(caption && !chunks.length){
@@ -519,9 +519,9 @@ async function processJob(jobData) {
         for (let i = 0; i < chunks.length; i++) {
           const ch = chunks[i];
           const emb = embeddings[i];
-          const chunkId = uuidv4();
-          storage.chunks.push({ chunkId, docId:d.docId, userId:d.userId, text: ch, createdAt: now, sourceType:'text' });
-          chromaItems.push({ id: chunkId, embedding: emb, metadata:{ docId:d.docId, userId:d.userId, sourceType:'text' }, document: ch });
+        const chunkId = uuidv4();
+        storage.chunks.push({ chunkId, docId:d.docId, userId:d.userId, text: ch, createdAt: now, sourceType:'text' });
+        chromaItems.push({ id: chunkId, embedding: emb, metadata:{ docId:d.docId, userId:d.userId, sourceType:'text' }, document: ch });
         }
       }
       if(chromaItems.length) await chromaUpsert(d.userId, chromaItems);
@@ -562,9 +562,9 @@ async function processJob(jobData) {
         for (let i = 0; i < chunks.length; i++) {
           const ch = chunks[i];
           const emb = embeddings[i];
-          const chunkId = uuidv4();
-          storage.chunks.push({ chunkId, docId:d.docId, userId:d.userId, text: ch, createdAt: now, sourceType:'url', sourceUrl:d.url });
-          chromaItems.push({ id: chunkId, embedding: emb, metadata:{ docId:d.docId, userId:d.userId, sourceType:'url', url:d.url }, document: ch });
+        const chunkId = uuidv4();
+        storage.chunks.push({ chunkId, docId:d.docId, userId:d.userId, text: ch, createdAt: now, sourceType:'url', sourceUrl:d.url });
+        chromaItems.push({ id: chunkId, embedding: emb, metadata:{ docId:d.docId, userId:d.userId, sourceType:'url', url:d.url }, document: ch });
         }
       }
       if(chromaItems.length) await chromaUpsert(d.userId, chromaItems);
@@ -1124,19 +1124,39 @@ app.post('/trash/restore/:itemId', async (req, res) => {
       // Restore to Chroma - need to regenerate embeddings
       if (chunks.length > 0) {
         const chromaItems = [];
-        for (const ch of chunks) {
-          try {
-            const emb = await embedText(ch.text);
+        const chunkTexts = chunks.map(ch => ch.text);
+        console.log(`Regenerating embeddings for ${chunks.length} chunks in batch...`);
+        
+        try {
+          const embeddings = await embedTextsBatch(chunkTexts);
+          for (let i = 0; i < chunks.length; i++) {
+            const ch = chunks[i];
+            const emb = embeddings[i];
             chromaItems.push({
               id: ch.chunkId,
               embedding: emb,
               metadata: { docId: ch.docId, userId: ch.userId, sourceType: ch.sourceType },
               document: ch.text
             });
-          } catch(e) {
-            console.warn('Failed to regenerate embedding for chunk:', ch.chunkId, e.message);
+          }
+        } catch(e) {
+          console.error('Failed to regenerate embeddings:', e.message);
+          // Fallback to sequential if batch fails
+          for (const ch of chunks) {
+            try {
+              const emb = await embedText(ch.text);
+              chromaItems.push({
+                id: ch.chunkId,
+                embedding: emb,
+                metadata: { docId: ch.docId, userId: ch.userId, sourceType: ch.sourceType },
+                document: ch.text
+              });
+            } catch(err) {
+              console.warn('Failed to regenerate embedding for chunk:', ch.chunkId, err.message);
+            }
           }
         }
+        
         if (chromaItems.length > 0) {
           await chromaUpsert(userId, chromaItems);
         }
