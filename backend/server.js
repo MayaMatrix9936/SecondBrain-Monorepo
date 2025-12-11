@@ -46,9 +46,24 @@ if (!fs.existsSync(uploadsDir)) {
 const upload = multer({ dest: uploadsDir });
 
 const STORAGE_FILE = path.join(__dirname, 'storage.json');
-if (!fs.existsSync(STORAGE_FILE)) fs.writeFileSync(STORAGE_FILE, JSON.stringify({ docs: [], chunks: [], graph: {nodes:[], edges:[]}, conversations: [] }, null, 2));
+if (!fs.existsSync(STORAGE_FILE)) fs.writeFileSync(STORAGE_FILE, JSON.stringify({ docs: [], chunks: [], graph: {nodes:[], edges:[]}, conversations: [], trash: [] }, null, 2));
 function readStorage() { return JSON.parse(fs.readFileSync(STORAGE_FILE, 'utf8')); }
 function writeStorage(obj) { fs.writeFileSync(STORAGE_FILE, JSON.stringify(obj, null, 2)); }
+
+// Cleanup old trash items (older than 30 days)
+function cleanupTrash(storage) {
+  if (!storage.trash) return;
+  const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+  const initialCount = storage.trash.length;
+  storage.trash = storage.trash.filter(item => {
+    const deletedAt = new Date(item.deletedAt).getTime();
+    return deletedAt > thirtyDaysAgo;
+  });
+  const removedCount = initialCount - storage.trash.length;
+  if (removedCount > 0) {
+    console.log(`Cleaned up ${removedCount} old trash items`);
+  }
+}
 
 // Worker functions (moved from worker.js)
 function safeJSON(str) {
@@ -864,24 +879,29 @@ app.delete('/docs/:docId', async (req, res) => {
     const chunksToDelete = storage.chunks.filter(c => c.docId === docId);
     const chunkIds = chunksToDelete.map(c => c.chunkId);
     
-    // Delete from Chroma if there are chunks
+    // Delete from Chroma if there are chunks (remove from search, but keep in trash)
     if (chunkIds.length > 0) {
       await chromaDelete(userId, chunkIds);
     }
     
-    // Delete uploaded file if it exists
-    if (doc.originalUri && doc.originalUri.startsWith('/') && fs.existsSync(doc.originalUri)) {
-      try {
-        fs.unlinkSync(doc.originalUri);
-      } catch(e) {
-        console.warn('Could not delete file:', doc.originalUri, e.message);
+    // Move to trash instead of deleting
+    if (!storage.trash) storage.trash = [];
+    storage.trash.push({
+      itemId: docId,
+      type: 'document',
+      userId: userId,
+      deletedAt: new Date().toISOString(),
+      data: {
+        doc: doc,
+        chunks: chunksToDelete,
+        chunkIds: chunkIds
       }
-    }
+    });
     
-    // Remove document from storage
+    // Remove document from active storage (but keep in trash)
     storage.docs.splice(docIndex, 1);
     
-    // Remove chunks from storage
+    // Remove chunks from active storage (but keep in trash)
     storage.chunks = storage.chunks.filter(c => c.docId !== docId);
     
     // Remove graph nodes and edges related to this document
@@ -889,9 +909,12 @@ app.delete('/docs/:docId', async (req, res) => {
     storage.graph.nodes = storage.graph.nodes.filter(n => n.id !== docNodeId);
     storage.graph.edges = storage.graph.edges.filter(e => e.from !== docNodeId && e.to !== docNodeId);
     
+    // Cleanup old trash items
+    cleanupTrash(storage);
+    
     writeStorage(storage);
     
-    res.json({ ok: true, deleted: { docId, chunks: chunkIds.length } });
+    res.json({ ok: true, movedToTrash: true, docId });
   } catch(e) {
     console.error('Delete error:', e);
     res.status(500).json({ error: 'Delete failed', details: e.message });
@@ -962,11 +985,147 @@ app.delete('/conversations/:conversationId', (req, res) => {
     return res.status(404).json({ error: 'Conversation not found' });
   }
   
+  const conversation = storage.conversations[index];
+  
+  // Move to trash instead of deleting
+  if (!storage.trash) storage.trash = [];
+  storage.trash.push({
+    itemId: conversationId,
+    type: 'conversation',
+    userId: userId,
+    deletedAt: new Date().toISOString(),
+    data: {
+      conversation: conversation
+    }
+  });
+  
+  // Remove from active storage (but keep in trash)
   storage.conversations.splice(index, 1);
+  
+  // Cleanup old trash items
+  cleanupTrash(storage);
+  
   writeStorage(storage);
-  res.json({ ok: true });
+  res.json({ ok: true, movedToTrash: true });
 });
 
+// Trash endpoints
+app.get('/trash', (req, res) => {
+  const userId = req.headers['x-user-id'] || 'demo-user';
+  const storage = readStorage();
+  if (!storage.trash) storage.trash = [];
+  
+  // Cleanup old items first
+  cleanupTrash(storage);
+  writeStorage(storage);
+  
+  const userTrash = storage.trash.filter(item => item.userId === userId);
+  // Sort by most recently deleted first
+  userTrash.sort((a, b) => new Date(b.deletedAt) - new Date(a.deletedAt));
+  res.json(userTrash);
+});
+
+app.post('/trash/restore/:itemId', async (req, res) => {
+  try {
+    const userId = req.headers['x-user-id'] || 'demo-user';
+    const { itemId } = req.params;
+    const storage = readStorage();
+    if (!storage.trash) storage.trash = [];
+    
+    const trashIndex = storage.trash.findIndex(item => item.itemId === itemId && item.userId === userId);
+    if (trashIndex === -1) {
+      return res.status(404).json({ error: 'Trash item not found' });
+    }
+    
+    const trashItem = storage.trash[trashIndex];
+    
+    if (trashItem.type === 'document') {
+      // Restore document
+      const { doc, chunks, chunkIds } = trashItem.data;
+      
+      // Restore document
+      if (!storage.docs) storage.docs = [];
+      storage.docs.push(doc);
+      
+      // Restore chunks
+      if (!storage.chunks) storage.chunks = [];
+      storage.chunks.push(...chunks);
+      
+      // Restore to Chroma - need to regenerate embeddings
+      if (chunks.length > 0) {
+        const chromaItems = [];
+        for (const ch of chunks) {
+          try {
+            const emb = await embedText(ch.text);
+            chromaItems.push({
+              id: ch.chunkId,
+              embedding: emb,
+              metadata: { docId: ch.docId, userId: ch.userId, sourceType: ch.sourceType },
+              document: ch.text
+            });
+          } catch(e) {
+            console.warn('Failed to regenerate embedding for chunk:', ch.chunkId, e.message);
+          }
+        }
+        if (chromaItems.length > 0) {
+          await chromaUpsert(userId, chromaItems);
+        }
+      }
+      
+    } else if (trashItem.type === 'conversation') {
+      // Restore conversation
+      if (!storage.conversations) storage.conversations = [];
+      storage.conversations.push(trashItem.data.conversation);
+    }
+    
+    // Remove from trash
+    storage.trash.splice(trashIndex, 1);
+    writeStorage(storage);
+    
+    res.json({ ok: true, restored: true, type: trashItem.type });
+  } catch(e) {
+    console.error('Restore error:', e);
+    res.status(500).json({ error: 'Restore failed', details: e.message });
+  }
+});
+
+app.delete('/trash/:itemId', async (req, res) => {
+  try {
+    const userId = req.headers['x-user-id'] || 'demo-user';
+    const { itemId } = req.params;
+    const storage = readStorage();
+    if (!storage.trash) storage.trash = [];
+    
+    const trashIndex = storage.trash.findIndex(item => item.itemId === itemId && item.userId === userId);
+    if (trashIndex === -1) {
+      return res.status(404).json({ error: 'Trash item not found' });
+    }
+    
+    const trashItem = storage.trash[trashIndex];
+    
+    // Permanently delete
+    if (trashItem.type === 'document') {
+      // Delete uploaded file if it exists
+      const doc = trashItem.data.doc;
+      if (doc.originalUri && doc.originalUri.startsWith('/') && fs.existsSync(doc.originalUri)) {
+        try {
+          fs.unlinkSync(doc.originalUri);
+        } catch(e) {
+          console.warn('Could not delete file:', doc.originalUri, e.message);
+        }
+      }
+    }
+    
+    // Remove from trash (permanent deletion)
+    storage.trash.splice(trashIndex, 1);
+    writeStorage(storage);
+    
+    res.json({ ok: true, permanentlyDeleted: true });
+  } catch(e) {
+    console.error('Permanent delete error:', e);
+    res.status(500).json({ error: 'Permanent delete failed', details: e.message });
+  }
+});
 
 const port = process.env.PORT || 4000;
 app.listen(port, ()=> console.log('Server v3 listening on', port));

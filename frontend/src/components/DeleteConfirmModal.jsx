@@ -1,4 +1,4 @@
-export default function DeleteConfirmModal({ isOpen, onClose, onConfirm, title, itemName, type = 'conversation' }) {
+export default function DeleteConfirmModal({ isOpen, onClose, onConfirm, title, itemName, message, type = 'conversation', confirmText = 'Delete', confirmClass = 'bg-red-600 dark:bg-red-500 hover:bg-red-700 dark:hover:bg-red-600' }) {
   if (!isOpen) return null;
 
   const getIcon = () => {
@@ -16,6 +16,15 @@ export default function DeleteConfirmModal({ isOpen, onClose, onConfirm, title, 
     );
   };
 
+  const defaultMessage = message || (
+    <>
+      Are you sure you want to delete <span className="font-semibold">"{itemName}"</span>? 
+      {type === 'conversation' 
+        ? ' All messages in this conversation will be permanently deleted.'
+        : ' This document and all its associated data will be permanently deleted.'}
+    </>
+  );
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-md w-full mx-4 transform transition-all" onClick={(e) => e.stopPropagation()}>
@@ -25,16 +34,13 @@ export default function DeleteConfirmModal({ isOpen, onClose, onConfirm, title, 
               {getIcon()}
             </div>
             <div className="ml-4">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{title}</h3>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{title || 'Confirm Deletion'}</h3>
               <p className="text-sm text-gray-500 dark:text-gray-400">This action cannot be undone</p>
             </div>
           </div>
           
           <p className="text-gray-700 dark:text-gray-300 mb-6">
-            Are you sure you want to delete <span className="font-semibold">"{itemName}"</span>? 
-            {type === 'conversation' 
-              ? ' All messages in this conversation will be permanently deleted.'
-              : ' This document and all its associated data will be permanently deleted.'}
+            {typeof defaultMessage === 'string' ? defaultMessage : defaultMessage}
           </p>
           
           <div className="flex space-x-3">
@@ -46,9 +52,9 @@ export default function DeleteConfirmModal({ isOpen, onClose, onConfirm, title, 
             </button>
             <button
               onClick={onConfirm}
-              className="flex-1 px-4 py-2.5 bg-red-600 dark:bg-red-500 text-white rounded-lg hover:bg-red-700 dark:hover:bg-red-600 transition-colors font-medium"
+              className={`flex-1 px-4 py-2.5 ${confirmClass} text-white rounded-lg transition-colors font-medium`}
             >
-              Delete
+              {confirmText}
             </button>
           </div>
         </div>

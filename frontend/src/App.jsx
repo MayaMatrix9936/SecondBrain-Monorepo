@@ -2,6 +2,7 @@ import { useState } from 'react';
 import Chat from './components/Chat';
 import Uploader from './components/Uploader';
 import DocumentList from './components/DocumentList';
+import Trash from './components/Trash';
 import ToastContainer from './components/ToastContainer';
 import { ToastProvider, useToast } from './contexts/ToastContext';
 import { ThemeProvider, useTheme } from './contexts/ThemeContext';
@@ -73,6 +74,16 @@ function AppContent() {
               >
                 📚 Documents
               </button>
+              <button
+                onClick={() => setActiveTab('trash')}
+                className={`px-4 py-2 rounded-md font-medium text-sm transition-all ${
+                  activeTab === 'trash'
+                    ? 'bg-white dark:bg-gray-600 text-blue-600 dark:text-blue-400 shadow-sm'
+                    : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+                }`}
+              >
+                🗑️ Trash
+              </button>
               </div>
             </div>
           </div>
@@ -100,6 +111,10 @@ function AppContent() {
 
             {activeTab === 'documents' && (
               <DocumentList key={refreshKey} />
+            )}
+
+            {activeTab === 'trash' && (
+              <Trash />
             )}
           </div>
 
