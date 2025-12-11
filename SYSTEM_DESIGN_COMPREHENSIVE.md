@@ -1,7 +1,8 @@
 # SecondBrain: Comprehensive System Design Document
 
-**Version:** 1.0  
+**Version:** 2.0  
 **Date:** December 2025  
+**Last Updated:** December 2025  
 **Author:** SecondBrain Development Team
 
 ---
@@ -1340,7 +1341,61 @@ For questions or clarifications, please refer to the codebase or contact the dev
 
 ---
 
-**Document Version:** 1.0  
+**Document Version:** 2.0  
 **Last Updated:** December 2025  
 **Status:** Final
+
+---
+
+## Recent Updates (Version 2.0)
+
+### Streaming Responses Implementation
+- **Token-by-token streaming** via Server-Sent Events (SSE)
+- Real-time UI updates as tokens arrive from OpenAI
+- **Stop/Cancel functionality** during generation using AbortController
+- Progressive message display for better user experience
+- Frontend uses `ReadableStream` API for parsing SSE events
+
+### Enhanced Source Citations
+- **Document metadata** included in sources (filename, originalUri, sourceType)
+- **Deduplication** by document ID (each document appears once, highest score kept)
+- **Clickable links** for URLs (open in new tab)
+- **Visual badges** with document names instead of just counts
+- Sources sent first in streaming, then content chunks
+
+### Improved Multi-Modal Processing
+
+#### Audio Processing
+- OpenAI Whisper API with explicit filename handling
+- File buffer-based transmission with proper content-type headers
+- 5-minute timeout for long audio files
+- Comprehensive error handling and logging
+
+#### Image Processing
+- **OpenAI Vision API** (replaced HuggingFace BLIP due to API deprecation)
+- Base64 encoding for image transmission
+- Detailed image descriptions (text, objects, people, settings, colors, activities)
+- 60-second timeout for Vision API calls
+- Graceful fallback handling
+
+#### URL Processing
+- Enhanced scraping with authentication detection
+- YouTube URL detection and metadata creation
+- Metadata chunk creation for failed URLs (ensures searchability)
+- Better error messages for user feedback
+
+### Chat Interface Features
+- **Regenerate response** button (hover on last AI message)
+- **Message timestamps** with relative time display ("Just now", "5m ago", "2h ago")
+- **Auto-scroll improvements** during streaming
+- **Input disabled** during response generation (prevents multiple submissions)
+- **Copy message** functionality
+- Better error handling and user feedback
+
+### Error Handling Improvements
+- Graceful handling of failed processing (images, URLs, audio)
+- Informative error messages for users
+- Processing error tracking in document metadata
+- Filtering of error chunks from search results
+- Specific AI responses for failed processing scenarios
 
