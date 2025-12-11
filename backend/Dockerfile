@@ -1,7 +1,10 @@
 FROM node:20-alpine
 WORKDIR /app
+# Copy package files first for better layer caching
 COPY package*.json ./
-RUN npm install --production
+# Install production dependencies only
+RUN npm ci --only=production && npm cache clean --force
+# Copy application code
 COPY . .
 ENV PORT=4000
 EXPOSE 4000
