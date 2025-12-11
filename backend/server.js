@@ -36,7 +36,12 @@ app.use(cors({
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(bodyParser.json());
-const upload = multer({ dest: path.join(__dirname, 'uploads') });
+// Ensure uploads directory exists
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+const upload = multer({ dest: uploadsDir });
 
 const STORAGE_FILE = path.join(__dirname, 'storage.json');
 if (!fs.existsSync(STORAGE_FILE)) fs.writeFileSync(STORAGE_FILE, JSON.stringify({ docs: [], chunks: [], graph: {nodes:[], edges:[]}, conversations: [] }, null, 2));
@@ -101,7 +106,16 @@ async function blipCaptionImage(localPath){
 }
 
 async function chromaUpsert(collection, items){
-  await axios.post(`${CHROMA_URL}/upsert`, { collection, items });
+  try {
+    if (!CHROMA_URL || CHROMA_URL === 'http://localhost:8000') {
+      console.warn('CHROMA_URL not set, skipping ChromaDB upsert');
+      return;
+    }
+    await axios.post(`${CHROMA_URL}/upsert`, { collection, items });
+  } catch (e) {
+    console.error('ChromaDB upsert error:', e.message);
+    // Don't throw - allow upload to succeed even if ChromaDB fails
+  }
 }
 
 function chunkText(text, approxWords=400){
@@ -276,11 +290,13 @@ app.get('/health', (req,res)=> res.json({ ok:true }));
 
 app.post('/upload', upload.single('file'), async (req,res)=>{
   try{
+    console.log('Upload request received', { hasFile: !!req.file, hasText: !!req.body.text, hasUrl: !!req.body.url });
     const userId = req.headers['x-user-id'] || 'demo-user';
     const docId = uuidv4(); const now = new Date().toISOString();
     let meta = { docId, userId, uploadedAt: now, processedAt: null, title: req.body.title || null, sourceType: null, originalUri: null, tags: [] };
     const storage = readStorage();
     if(req.file){
+      console.log('Processing file upload:', req.file.originalname);
       const fname = req.file.originalname; const localPath = req.file.path;
       let sourceType='file';
       if(fname.toLowerCase().endsWith('.pdf')) sourceType='pdf';
@@ -306,7 +322,11 @@ app.post('/upload', upload.single('file'), async (req,res)=>{
     } else {
       return res.status(400).json({ error:'no file/text/url' });
     }
-  } catch(e){ console.error('upload err', e); res.status(500).json({ error:'upload failed' }); }
+  } catch(e){ 
+    console.error('upload err', e); 
+    console.error('upload error details:', e.message, e.stack);
+    res.status(500).json({ error:'upload failed', details: e.message }); 
+  }
 });
 
 app.post('/query', async (req,res)=>{
