@@ -1,0 +1,116 @@
+name: secondbrain
+region: nyc
+
+services:
+  - name: redis
+    image:
+      registry_type: DOCKER_HUB
+      repository: redis
+      tag: "7"
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    http_port: 6379
+    routes:
+      - path: /
+    health_check:
+      http_path: /
+    envs:
+      - key: REDIS_PASSWORD
+        scope: RUN_TIME
+        value: ""
+
+  - name: chroma
+    github:
+      repo: MayaMatrix9936/secondbrain-monorepo-final
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: chroma_service/Dockerfile
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    http_port: 8000
+    routes:
+      - path: /
+    health_check:
+      http_path: /health
+    envs:
+      - key: CHROMA_URL
+        scope: RUN_TIME
+        value: "${chroma.PUBLIC_URL}"
+
+  - name: backend
+    github:
+      repo: MayaMatrix9936/secondbrain-monorepo-final
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: backend/Dockerfile
+    instance_count: 1
+    instance_size_slug: basic-xs
+    http_port: 4000
+    routes:
+      - path: /
+    health_check:
+      http_path: /health
+    envs:
+      - key: OPENAI_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: HF_API_TOKEN
+        scope: RUN_TIME
+        type: SECRET
+      - key: REDIS_URL
+        scope: RUN_TIME
+        value: "redis://redis:6379"
+      - key: CHROMA_URL
+        scope: RUN_TIME
+        value: "${chroma.PUBLIC_URL}"
+      - key: FRONTEND_URL
+        scope: RUN_TIME
+        value: "${frontend.PUBLIC_URL}"
+      - key: NODE_ENV
+        scope: RUN_TIME
+        value: "production"
+
+  - name: worker
+    github:
+      repo: MayaMatrix9936/secondbrain-monorepo-final
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: backend/Dockerfile
+    run_command: node worker.js
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    envs:
+      - key: OPENAI_API_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: HF_API_TOKEN
+        scope: RUN_TIME
+        type: SECRET
+      - key: REDIS_URL
+        scope: RUN_TIME
+        value: "redis://redis:6379"
+      - key: CHROMA_URL
+        scope: RUN_TIME
+        value: "${chroma.PUBLIC_URL}"
+      - key: NODE_ENV
+        scope: RUN_TIME
+        value: "production"
+
+  - name: frontend
+    github:
+      repo: MayaMatrix9936/secondbrain-monorepo-final
+      branch: main
+      deploy_on_push: true
+    dockerfile_path: frontend/Dockerfile
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    http_port: 5173
+    routes:
+      - path: /
+    health_check:
+      http_path: /
+    envs:
+      - key: VITE_API_URL
+        scope: RUN_TIME
+        value: "${backend.PUBLIC_URL}"
+
