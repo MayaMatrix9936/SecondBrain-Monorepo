@@ -100,11 +100,11 @@
 - **Fix Needed**: Implement Server-Sent Events (SSE) or streaming API
 
 ### 2. PDF Format for System Design Document ⚠️
-**Status**: MARKDOWN ONLY
+**Status**: MARKDOWN ONLY (PDF conversion not implemented)
 - **Requirement**: "A comprehensive PDF document"
 - **Current State**: `SYSTEM_DESIGN_COMPREHENSIVE.md` exists but not in PDF format
-- **Impact**: Minor - can be easily converted
-- **Fix Needed**: Convert markdown to PDF (pandoc, markdown-pdf, etc.)
+- **Impact**: Minor - can be easily converted manually
+- **Note**: PDF conversion can be done using pandoc, online converters, or VS Code extensions
 
 ### 3. Video Walkthrough Recording ⚠️
 **Status**: SCRIPT EXISTS, VIDEO UNCERTAIN
@@ -130,19 +130,7 @@
 
 ## 🔧 QUICK FIXES NEEDED
 
-### Priority 1: Convert Design Doc to PDF
-```bash
-# Option 1: Using pandoc
-pandoc SYSTEM_DESIGN_COMPREHENSIVE.md -o SYSTEM_DESIGN_COMPREHENSIVE.pdf
-
-# Option 2: Using markdown-pdf (npm)
-npx markdown-pdf SYSTEM_DESIGN_COMPREHENSIVE.md
-
-# Option 3: Using online converter
-# Upload to https://www.markdowntopdf.com/
-```
-
-### Priority 2: Record Video Walkthrough
+### Priority 1: Record Video Walkthrough
 - Follow the script in `VIDEO_WALKTHROUGH_GUIDE.md`
 - Record 5-10 minute walkthrough
 - Upload to YouTube/Vimeo or include in submission

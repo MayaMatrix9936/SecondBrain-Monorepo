@@ -74,3 +74,8 @@ def delete_items(req: DeleteRequest):
         return {"ok": True, "deleted": len(req.ids)}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+@app.get("/health")
+@app.get("/")
+def health():
+    return {"ok": True, "service": "chroma"}
