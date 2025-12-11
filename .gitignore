@@ -47,3 +47,7 @@ chroma_data/
 # Video walkthrough guide (local only)
 VIDEO_WALKTHROUGH_GUIDE.md
 
+# Deployment guides (local only)
+DEPLOYMENT_GUIDE.md
+RAILWAY_DEPLOYMENT.md
+
