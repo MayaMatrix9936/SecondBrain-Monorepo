@@ -44,3 +44,6 @@ chroma_data/
 *.tmp
 *.temp
 
+# Video walkthrough guide (local only)
+VIDEO_WALKTHROUGH_GUIDE.md
+
