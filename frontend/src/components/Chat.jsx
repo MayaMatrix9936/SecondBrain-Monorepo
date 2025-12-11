@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import DeleteConfirmModal from './DeleteConfirmModal';
 import { useToast } from '../contexts/ToastContext';
 
-const API_URL = 'http://localhost:4000';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 export default function Chat() {
   const [messages, setMessages] = useState([]);
