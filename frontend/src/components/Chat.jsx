@@ -335,7 +335,8 @@ export default function Chat() {
     
     // Helper to escape HTML
     const escapeHtml = (str) => {
-      return str
+      if (!str) return '';
+      return String(str)
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
@@ -343,48 +344,61 @@ export default function Chat() {
         .replace(/'/g, '&#039;');
     };
     
-    let html = text;
+    let html = String(text);
     
     // Code blocks (process first to avoid conflicts)
     html = html.replace(/```(\w+)?\n?([\s\S]*?)```/g, (match, lang, code) => {
-      const escapedCode = escapeHtml(code.trim());
+      const escapedCode = escapeHtml(code ? code.trim() : '');
       return `<pre class="bg-gray-100 dark:bg-gray-800 p-3 rounded-lg overflow-x-auto my-2"><code class="text-sm">${escapedCode}</code></pre>`;
     });
     
-    // Inline code (only if not inside code blocks)
+    // Inline code
     html = html.replace(/`([^`\n]+)`/g, (match, code) => {
-      // Skip if already inside a <pre> tag
-      if (match.includes('<pre>') || match.includes('</pre>')) return match;
+      if (!code) return match;
       return `<code class="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-sm font-mono">${escapeHtml(code)}</code>`;
     });
     
-    // Bold (only if not inside code)
+    // Bold
     html = html.replace(/\*\*([^*]+)\*\*/g, (match, text) => {
-      if (match.includes('<code>') || match.includes('</code>')) return match;
+      if (!text) return match;
       return `<strong>${escapeHtml(text)}</strong>`;
     });
     
-    // Italic (only if not inside code or bold)
-    html = html.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, (match, text) => {
-      if (match.includes('<code>') || match.includes('</code>') || match.includes('<strong>')) return match;
+    // Italic (simple pattern, avoid lookbehind)
+    html = html.replace(/\*([^*\n]+)\*/g, (match, text) => {
+      if (!text || match.includes('**')) return match; // Skip if part of bold
       return `<em>${escapeHtml(text)}</em>`;
     });
     
     // Links
     html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, text, url) => {
+      if (!text || !url) return match;
       const escapedUrl = escapeHtml(url);
       const escapedText = escapeHtml(text);
       return `<a href="${escapedUrl}" target="_blank" rel="noopener noreferrer" class="text-blue-600 dark:text-blue-400 hover:underline">${escapedText}</a>`;
     });
     
-    // Escape remaining HTML
-    const parts = html.split(/(<pre>[\s\S]*?<\/pre>|<code>[\s\S]*?<\/code>|<a[\s\S]*?<\/a>)/);
-    html = parts.map(part => {
-      if (part.startsWith('<pre>') || part.startsWith('<code') || part.startsWith('<a')) {
-        return part; // Already processed
+    // Escape remaining HTML that wasn't processed
+    const processedTags = /<pre>[\s\S]*?<\/pre>|<code[^>]*>[\s\S]*?<\/code>|<a[^>]*>[\s\S]*?<\/a>/g;
+    const parts = [];
+    let lastIndex = 0;
+    let match;
+    
+    while ((match = processedTags.exec(html)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push({ type: 'text', content: html.substring(lastIndex, match.index) });
       }
-      return escapeHtml(part);
-    }).join('');
+      parts.push({ type: 'html', content: match[0] });
+      lastIndex = match.index + match[0].length;
+    }
+    
+    if (lastIndex < html.length) {
+      parts.push({ type: 'text', content: html.substring(lastIndex) });
+    }
+    
+    html = parts.length > 0 
+      ? parts.map(p => p.type === 'html' ? p.content : escapeHtml(p.content)).join('')
+      : escapeHtml(html);
     
     // Line breaks
     html = html.replace(/\n/g, '<br />');
