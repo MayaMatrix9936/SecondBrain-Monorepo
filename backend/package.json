@@ -4,8 +4,7 @@
   "private": true,
   "scripts": {
     "start": "node server.js",
-    "worker": "node worker.js",
-    "test": "jest"
+    "worker": "node worker.js"
   },
   "dependencies": {
     "dotenv": "^16.3.1",
@@ -22,11 +21,6 @@
     "pdf-parse": "^1.1.1",
     "tesseract.js": "^4.0.2",
     "uuid": "^9.0.0"
-  },
-  "devDependencies": {
-    "jest": "^29.7.0",
-    "supertest": "^6.3.4",
-    "cross-env": "^7.0.3"
   },
   "engines": {
     "node": ">=18"
