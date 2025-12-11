@@ -226,7 +226,7 @@ async function scrapeUrl(url){
   }
 }
 
-async function blipCaptionImage(localPath){
+async function captionImage(localPath){
   // Use OpenAI Vision API for image captioning
   try {
     console.log('Attempting image captioning with OpenAI Vision API');
@@ -388,7 +388,7 @@ async function processJob(jobData) {
           }
         }
       } else if(sourceType==='image'){
-        caption = await blipCaptionImage(localPath);
+        caption = await captionImage(localPath);
         if(caption) {
           text = caption;
         } else {
@@ -676,7 +676,7 @@ app.post('/query', async (req,res)=>{
       
       if(isImageQuery && failedImages.length > 0) {
         const imageNames = failedImages.map(d => d.filename || d.title).join(', ');
-        prompt += `\n\nNote: The user is asking about an image. I found ${failedImages.length} image document(s) in the system (${imageNames}), but automatic captioning failed for them. This means the images were uploaded but their content could not be automatically described. Please inform the user that the image(s) were uploaded but captioning is not available. To enable image captioning, they need to configure a HuggingFace API token (HF_API_TOKEN) in the backend environment variables. Without this token, images cannot be processed.`;
+        prompt += `\n\nNote: The user is asking about an image. I found ${failedImages.length} image document(s) in the system (${imageNames}), but automatic captioning failed for them. This means the images were uploaded but their content could not be automatically described. Please inform the user that the image(s) were uploaded but captioning failed. This may be due to image format issues, file corruption, or API limitations.`;
       } else if(isUrlQuery && failedUrls.length > 0) {
         const urlList = failedUrls.map(d => d.originalUri || d.title).join(', ');
         prompt += `\n\nNote: The user is asking about a URL. I found ${failedUrls.length} URL document(s) in the system (${urlList}), but content extraction failed for them. This typically happens when URLs require authentication (like dashboard pages), use heavy JavaScript rendering, or have access restrictions. Please inform the user that the URL(s) were uploaded but their content could not be extracted. Suggest they either: 1) Provide the content directly as text, 2) Check if the URL requires login/authentication, or 3) Try a different publicly accessible URL.`;
@@ -770,7 +770,7 @@ async function handleStreamingQuery(req, res, userId, query, k, from, to) {
       
       if(isImageQuery && failedImages.length > 0) {
         const imageNames = failedImages.map(d => d.filename || d.title).join(', ');
-        prompt += `\n\nNote: The user is asking about an image. I found ${failedImages.length} image document(s) in the system (${imageNames}), but automatic captioning failed for them. This means the images were uploaded but their content could not be automatically described. Please inform the user that the image(s) were uploaded but captioning is not available. To enable image captioning, they need to configure a HuggingFace API token (HF_API_TOKEN) in the backend environment variables. Without this token, images cannot be processed.`;
+        prompt += `\n\nNote: The user is asking about an image. I found ${failedImages.length} image document(s) in the system (${imageNames}), but automatic captioning failed for them. This means the images were uploaded but their content could not be automatically described. Please inform the user that the image(s) were uploaded but captioning failed. This may be due to image format issues, file corruption, or API limitations.`;
       } else if(isUrlQuery && failedUrls.length > 0) {
         const urlList = failedUrls.map(d => d.originalUri || d.title).join(', ');
         prompt += `\n\nNote: The user is asking about a URL. I found ${failedUrls.length} URL document(s) in the system (${urlList}), but content extraction failed for them. This typically happens when URLs require authentication (like dashboard pages), use heavy JavaScript rendering, or have access restrictions. Please inform the user that the URL(s) were uploaded but their content could not be extracted. Suggest they either: 1) Provide the content directly as text, 2) Check if the URL requires login/authentication, or 3) Try a different publicly accessible URL.`;

@@ -2,7 +2,7 @@
  * Ingestion Worker v3
  * - Consumes jobs from BullMQ 'ingest' queue
  * - Handles upload_file / inline_text / ingest_url
- * - Uses BLIP (HuggingFace Inference API) for image captions
+ * - Uses OpenAI Vision API for image captions
  * - Uses Chroma for vector storage
  */
 
@@ -18,12 +18,12 @@ const { v4: uuidv4 } = require('uuid');
 const cheerio = require('cheerio');
 
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
-const HF_API_TOKEN = process.env.HF_API_TOKEN;
-const HF_BLIP_MODEL = process.env.HF_BLIP_MODEL || "Salesforce/blip-image-captioning-large";
 const CHROMA_URL = process.env.CHROMA_URL || "http://localhost:8000";
 
 if (!OPENAI_KEY) { console.error('set OPENAI_API_KEY'); process.exit(1); }
-if (!HF_API_TOKEN) { console.error('set HF_API_TOKEN for BLIP captioning'); }
+
+// Image captioning uses OpenAI Vision API (gpt-4o-mini)
+console.log('✓ Image captioning enabled using OpenAI Vision API');
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 // Parse Redis URL to extract connection details
@@ -214,7 +214,7 @@ async function scrapeUrl(url){
   }
 }
 
-async function blipCaptionImage(localPath){
+async function captionImage(localPath){
   // Use OpenAI Vision API for image captioning
   try {
     console.log('Attempting image captioning with OpenAI Vision API');
@@ -359,7 +359,7 @@ const worker = new Worker('ingest', async job => {
           }
         }
       } else if(sourceType==='image'){
-        caption = await blipCaptionImage(localPath);
+        caption = await captionImage(localPath);
         if(caption) {
           text = caption;
         } else {
