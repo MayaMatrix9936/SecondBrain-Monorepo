@@ -1,0 +1,385 @@
+import { useState, useRef, useEffect } from 'react';
+import axios from 'axios';
+import { v4 as uuidv4 } from 'uuid';
+import DeleteConfirmModal from './DeleteConfirmModal';
+import { useToast } from '../contexts/ToastContext';
+
+const API_URL = 'http://localhost:4000';
+
+export default function Chat() {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [conversationId, setConversationId] = useState(null);
+  const [conversations, setConversations] = useState([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [loadingConversations, setLoadingConversations] = useState(true);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const messagesEndRef = useRef(null);
+  const { showSuccess, showError } = useToast();
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  useEffect(() => {
+    loadConversations();
+    // Create a new conversation on mount
+    const newId = uuidv4();
+    setConversationId(newId);
+  }, []);
+
+  const loadConversations = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/conversations`, {
+        headers: { 'x-user-id': 'demo-user' }
+      });
+      setConversations(response.data);
+    } catch (error) {
+      console.error('Error loading conversations:', error);
+    } finally {
+      setLoadingConversations(false);
+    }
+  };
+
+  const saveConversation = async (msgs) => {
+    if (!conversationId || msgs.length === 0) return;
+    
+    try {
+      const firstUserMessage = msgs.find(m => m.role === 'user');
+      const title = firstUserMessage ? firstUserMessage.content.substring(0, 50) : 'New Conversation';
+      
+      await axios.post(`${API_URL}/conversations`, {
+        conversationId,
+        title,
+        messages: msgs
+      }, {
+        headers: { 'x-user-id': 'demo-user' }
+      });
+      
+      // Refresh conversation list
+      await loadConversations();
+    } catch (error) {
+      console.error('Error saving conversation:', error);
+    }
+  };
+
+  const loadConversation = async (convId) => {
+    try {
+      const response = await axios.get(`${API_URL}/conversations/${convId}`, {
+        headers: { 'x-user-id': 'demo-user' }
+      });
+      setMessages(response.data.messages || []);
+      setConversationId(convId);
+      setShowHistory(false);
+    } catch (error) {
+      console.error('Error loading conversation:', error);
+    }
+  };
+
+  const startNewConversation = () => {
+    const newId = uuidv4();
+    setConversationId(newId);
+    setMessages([]);
+    setShowHistory(false);
+  };
+
+  const deleteConversation = async (convId, e) => {
+    e.stopPropagation();
+    const conv = conversations.find(c => c.conversationId === convId);
+    setDeleteConfirm({
+      conversationId: convId,
+      title: conv?.title || 'this conversation'
+    });
+  };
+
+  const confirmDeleteConversation = async () => {
+    if (!deleteConfirm) return;
+    
+    try {
+      await axios.delete(`${API_URL}/conversations/${deleteConfirm.conversationId}`, {
+        headers: { 'x-user-id': 'demo-user' }
+      });
+      await loadConversations();
+      if (conversationId === deleteConfirm.conversationId) {
+        startNewConversation();
+      }
+      setDeleteConfirm(null);
+      showSuccess('Conversation deleted successfully');
+    } catch (error) {
+      console.error('Error deleting conversation:', error);
+      showError('Failed to delete conversation');
+      setDeleteConfirm(null);
+    }
+  };
+
+  const copyMessage = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      showSuccess('Message copied to clipboard');
+    } catch (error) {
+      showError('Failed to copy message');
+    }
+  };
+
+  const filteredConversations = conversations.filter(conv =>
+    conv.title.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const handleSend = async (e) => {
+    e.preventDefault();
+    if (!input.trim() || loading) return;
+
+    const userMessage = { role: 'user', content: input };
+    const newMessages = [...messages, userMessage];
+    setMessages(newMessages);
+    setInput('');
+    setLoading(true);
+
+    try {
+      const response = await axios.post(`${API_URL}/query`, {
+        userId: 'demo-user',
+        query: input,
+        k: 6
+      });
+
+      const assistantMessage = {
+        role: 'assistant',
+        content: response.data.answer,
+        sources: response.data.sources || []
+      };
+
+      const updatedMessages = [...newMessages, assistantMessage];
+      setMessages(updatedMessages);
+      
+      // Save conversation after each exchange
+      await saveConversation(updatedMessages);
+    } catch (error) {
+      console.error('Query error:', error);
+      showError('Failed to get response. Please try again.');
+      const errorMessage = {
+        role: 'assistant',
+        content: 'Sorry, I encountered an error. Please try again.',
+        error: true
+      };
+      const updatedMessages = [...newMessages, errorMessage];
+      setMessages(updatedMessages);
+      await saveConversation(updatedMessages);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyPress = (e) => {
+      if (e.key === 'Escape' && deleteConfirm) {
+        setDeleteConfirm(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, [deleteConfirm]);
+
+  return (
+    <div className="flex h-full relative">
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmModal
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={confirmDeleteConversation}
+        title="Delete Conversation"
+        itemName={deleteConfirm?.title || 'this conversation'}
+        type="conversation"
+      />
+      {/* Conversation History Sidebar */}
+      <div className={`${showHistory ? 'w-64' : 'w-0'} transition-all duration-300 overflow-hidden border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col`}>
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="font-semibold text-gray-900 dark:text-white">Chat History</h3>
+            <button
+              onClick={startNewConversation}
+              className="px-3 py-1.5 text-sm bg-blue-600 dark:bg-blue-500 text-white rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 transition-colors"
+              title="New Conversation"
+            >
+              ➕ New
+            </button>
+          </div>
+          <input
+            type="text"
+            placeholder="Search conversations..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        
+        <div className="flex-1 overflow-y-auto">
+          {loadingConversations ? (
+            <div className="p-4 text-center text-gray-500 dark:text-gray-400">Loading...</div>
+          ) : filteredConversations.length === 0 ? (
+            <div className="p-4 text-center text-gray-500 dark:text-gray-400 text-sm">
+              {searchQuery ? 'No conversations found' : 'No conversations yet'}
+            </div>
+          ) : (
+            <div className="p-2">
+              {filteredConversations.map((conv) => (
+                <div
+                  key={conv.conversationId}
+                  className={`group p-3 mb-2 rounded-lg cursor-pointer transition-colors ${
+                    conversationId === conv.conversationId
+                      ? 'bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700'
+                      : 'hover:bg-gray-50 dark:hover:bg-gray-700 border border-transparent'
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div 
+                      className="flex-1 min-w-0"
+                      onClick={() => loadConversation(conv.conversationId)}
+                    >
+                      <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                        {conv.title}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        {new Date(conv.updatedAt || conv.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <button
+                      onClick={(e) => deleteConversation(conv.conversationId, e)}
+                      className="ml-2 p-1.5 text-red-600 hover:bg-red-50 rounded transition-all opacity-70 hover:opacity-100"
+                      title="Delete conversation"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col">
+        <div className="p-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setShowHistory(!showHistory)}
+              className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              title="Toggle History"
+            >
+              <svg className="w-5 h-5 text-gray-600 dark:text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+              </svg>
+            </button>
+            <h3 className="font-semibold text-gray-900 dark:text-white">
+              {conversations.find(c => c.conversationId === conversationId)?.title || 'New Conversation'}
+            </h3>
+          </div>
+          <button
+            onClick={startNewConversation}
+            className="px-3 py-1.5 text-sm bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+          >
+            New Chat
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50 dark:bg-gray-900">
+          {messages.length === 0 && (
+            <div className="text-center text-gray-500 dark:text-gray-400 mt-12">
+              <div className="text-6xl mb-4">🧠</div>
+              <p className="text-xl font-semibold mb-2 text-gray-700 dark:text-gray-300">Welcome to SecondBrain</p>
+              <p className="text-gray-500 dark:text-gray-400">Ask me anything about your uploaded documents!</p>
+            </div>
+          )}
+          
+          {messages.map((msg, idx) => (
+            <div
+              key={idx}
+              className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
+              <div
+              className={`max-w-3xl rounded-2xl px-5 py-3 shadow-sm group relative ${
+                msg.role === 'user'
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-500 dark:to-indigo-500 text-white'
+                  : msg.error
+                  ? 'bg-red-50 dark:bg-red-900/30 text-red-800 dark:text-red-300 border border-red-200 dark:border-red-800'
+                  : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-700'
+              }`}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <p className="whitespace-pre-wrap leading-relaxed flex-1">{msg.content}</p>
+                  <button
+                    onClick={() => copyMessage(msg.content)}
+                    className={`opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded hover:bg-opacity-20 ${
+                      msg.role === 'user' ? 'hover:bg-white' : 'hover:bg-gray-200'
+                    }`}
+                    title="Copy message"
+                  >
+                    <svg className={`w-4 h-4 ${msg.role === 'user' ? 'text-white' : 'text-gray-600'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                  </button>
+                </div>
+                {msg.sources && msg.sources.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-gray-300 border-opacity-30">
+                    <p className="text-xs opacity-75 font-medium">
+                      📎 {msg.sources.length} source{msg.sources.length > 1 ? 's' : ''} referenced
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+          
+          {loading && (
+            <div className="flex justify-start">
+              <div className="bg-white dark:bg-gray-800 rounded-2xl px-5 py-3 border border-gray-200 dark:border-gray-700 shadow-sm">
+                <div className="flex space-x-2">
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          <div ref={messagesEndRef} />
+        </div>
+
+        <form onSubmit={handleSend} className="border-t border-gray-200 dark:border-gray-700 p-4 bg-white dark:bg-gray-800">
+          <div className="flex space-x-3">
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="Ask a question about your documents... (Press Enter to send)"
+            className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            disabled={loading}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey && !loading && input.trim()) {
+                e.preventDefault();
+                handleSend(e);
+              }
+            }}
+          />
+            <button
+              type="submit"
+              disabled={loading || !input.trim()}
+              className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg font-medium"
+            >
+              Send
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}

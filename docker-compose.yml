@@ -1,0 +1,56 @@
+services:
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+
+  chroma:
+    build: ./chroma_service
+    volumes:
+      - chroma_data:/data
+    ports:
+      - "8000:8000"
+
+  backend:
+    build: ./backend
+    env_file:
+      - ./backend/.env
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - CHROMA_URL=http://chroma:8000
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/storage.json:/app/storage.json
+      - backend_data:/app/data
+    ports:
+      - "4000:4000"
+    depends_on:
+      - redis
+      - chroma
+    
+  worker:
+    build: ./backend
+    command: ["node", "worker.js"]
+    env_file:
+      - ./backend/.env
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - CHROMA_URL=http://chroma:8000
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - backend_data:/app/data
+      - ./backend/storage.json:/app/storage.json
+    depends_on:
+      - redis
+      - chroma
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+volumes:
+  chroma_data:
+  backend_data:
