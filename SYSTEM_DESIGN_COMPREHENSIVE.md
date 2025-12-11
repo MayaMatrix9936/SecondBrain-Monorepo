@@ -717,23 +717,35 @@ App
 
 ### 9.3 Key Features
 
-1. **Dark Mode**
+1. **Chat Interface**
+   - Real-time streaming responses (token-by-token via SSE)
+   - Stop/Cancel streaming button during generation
+   - Regenerate response button (hover on last AI message)
+   - Message timestamps with relative time display ("Just now", "5m ago", "2h ago")
+   - Copy message button (hover to reveal)
+   - Source citations with clickable document links
+   - Auto-scroll during streaming
+   - Input disabled during response generation (prevents multiple submissions)
+   - Conversation history with search
+   - New conversation creation
+
+2. **Dark Mode**
    - System preference detection
    - Manual toggle
    - Persistent storage
 
-2. **Chat History**
+3. **Chat History**
    - Conversation list
    - Search functionality
    - Delete conversations
 
-3. **Document Management**
+4. **Document Management**
    - List all documents
    - Search documents
    - Delete documents
    - Show processing status
 
-4. **Upload Interface**
+5. **Upload Interface**
    - Drag & drop support
    - Multiple input types
    - Progress feedback
