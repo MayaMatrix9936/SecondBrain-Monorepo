@@ -785,8 +785,19 @@ async function handleStreamingQuery(req, res, userId, query, k, from, to) {
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Accel-Buffering', 'no');
     
-    // Send sources first
-    res.write(`data: ${JSON.stringify({ type: 'sources', data: top.map(t=>({docId:t.docId, chunkId:t.chunkId, score:t.score})) })}\n\n`);
+    // Send sources first with document metadata
+    const sourcesWithMetadata = top.map(t => {
+      const doc = storage.docs.find(d => d.docId === t.docId);
+      return {
+        docId: t.docId,
+        chunkId: t.chunkId,
+        score: t.score,
+        filename: doc?.filename || doc?.title || null,
+        originalUri: doc?.originalUri || null,
+        sourceType: doc?.sourceType || null
+      };
+    });
+    res.write(`data: ${JSON.stringify({ type: 'sources', data: sourcesWithMetadata })}\n\n`);
     
     // Stream the response
     let fullAnswer = '';
