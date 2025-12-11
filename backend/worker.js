@@ -51,7 +51,7 @@ async function embedText(text){
   return resp.data.data[0].embedding;
 }
 
-async function transcribeAudio(localPath){
+async function transcribeAudio(localPath, filename = null){
   try {
     console.log('Starting audio transcription for:', localPath);
     
@@ -63,8 +63,19 @@ async function transcribeAudio(localPath){
     const fileStats = fs.statSync(localPath);
     console.log('Audio file size:', fileStats.size, 'bytes');
     
+    // Determine filename - use provided filename or extract from path
+    const fileExtension = path.extname(localPath).toLowerCase();
+    const finalFilename = filename || `audio${fileExtension}`;
+    console.log('Using filename for transcription:', finalFilename);
+    
+    // Read file as buffer and append with explicit filename
+    // OpenAI Whisper API requires the filename to determine the format
+    const fileBuffer = fs.readFileSync(localPath);
     const fm = new FormData();
-    fm.append('file', fs.createReadStream(localPath));
+    fm.append('file', fileBuffer, {
+      filename: finalFilename,
+      contentType: `audio/${fileExtension.substring(1)}` // e.g., audio/mp3
+    });
     fm.append('model', 'whisper-1');
     
     console.log('Sending audio to OpenAI Whisper API...');
@@ -86,8 +97,15 @@ async function transcribeAudio(localPath){
     console.log('Audio transcription successful, length:', transcribedText.length, 'characters');
     return transcribedText;
   } catch (e) {
+    const errorMsg = e.response?.data?.error?.message || e.message;
     console.error('Audio transcription error:', e.response?.data || e.message);
     console.error('Error details:', e.response?.status, e.response?.statusText);
+    
+    // Provide more helpful error message
+    if (e.response?.status === 400 && errorMsg?.includes('Unrecognized file format')) {
+      throw new Error(`Audio file format not supported. The file may be corrupted or in an unsupported format. Supported formats: flac, m4a, mp3, mp4, mpeg, mpga, oga, ogg, wav, webm. Original error: ${errorMsg}`);
+    }
+    
     throw e; // Re-throw so caller can handle it
   }
 }
@@ -287,7 +305,7 @@ const worker = new Worker('ingest', async job => {
   const now = new Date().toISOString();
   try{
     if(d.jobType==='upload_file'){
-      const { localPath, sourceType } = d;
+      const { localPath, filename, sourceType } = d;
       let text = '';
       let caption = null;
       if(sourceType==='pdf'){
@@ -296,7 +314,7 @@ const worker = new Worker('ingest', async job => {
         text = p.text||'';
       } else if(sourceType==='audio'){
         try {
-          text = await transcribeAudio(localPath);
+          text = await transcribeAudio(localPath, filename);
           if (!text || text.trim().length === 0) {
             console.warn('Audio transcription returned empty text');
             text = '';
