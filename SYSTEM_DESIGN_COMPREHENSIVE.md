@@ -561,18 +561,31 @@ final_score = 0.85 * semantic_score
 ### 7.3 RAG (Retrieval-Augmented Generation)
 
 **Context Building:**
-1. Retrieve top-k chunks (default: 5)
-2. Combine into context window
-3. Add system prompt with instructions
-4. Send to LLM (gpt-4o-mini)
-5. Return answer with source citations
+1. Retrieve top-k chunks (default: 6, expanded to 15 for initial retrieval)
+2. Apply temporal filters if detected in query
+3. Score and rank using hybrid algorithm
+4. Select top-k chunks (default: 6)
+5. Combine into context window with source metadata
+6. Add system prompt with instructions
+7. Send to LLM (gpt-4o-mini) with streaming enabled
+8. Stream response token-by-token to frontend
+9. Return answer with deduplicated source citations
+
+**Streaming Implementation:**
+- Uses Server-Sent Events (SSE) for real-time token delivery
+- Frontend receives chunks as they're generated
+- Supports cancellation via AbortController
+- Sources sent first, then content chunks, then completion signal
 
 **Prompt Template:**
 ```
 You are a helpful assistant. Answer the user's question based ONLY on the provided context.
 
 Context:
+Source 1 (doc:{docId}, score:{score}):
 [Chunk 1]
+
+Source 2 (doc:{docId}, score:{score}):
 [Chunk 2]
 ...
 
@@ -580,6 +593,11 @@ Question: {user_query}
 
 Answer:
 ```
+
+**Source Deduplication:**
+- Multiple chunks from same document are deduplicated
+- Only highest-scoring reference per document is shown
+- Source metadata includes: filename, originalUri, sourceType, docId, chunkId, score
 
 ---
 
@@ -617,8 +635,16 @@ Answer:
 
 #### Web URLs
 - **Parser**: `cheerio` (server-side HTML parsing)
-- **Extraction**: Text from `<p>` tags
-- **Output**: Scraped article text
+- **Extraction**: 
+  - Text from `<p>`, `<article>`, `<main>`, `<section>` tags
+  - Removes scripts, styles, and navigation elements
+  - Detects authentication-required pages (dashboards, login pages)
+  - Handles YouTube URLs with metadata creation
+- **Features**:
+  - Proper headers to avoid blocking
+  - 10-second timeout
+  - Creates searchable metadata even if scraping fails
+- **Output**: Scraped article text or metadata chunk
 
 #### Plain Text
 - **Processing**: Direct ingestion
