@@ -158,39 +158,58 @@ async function blipCaptionImage(localPath){
   }
   
   console.log('Attempting image captioning with HF_API_TOKEN:', HF_API_TOKEN ? 'SET' : 'NOT SET');
-  // Try router endpoint first, fallback to api-inference
-  let endpoint = `https://router.huggingface.co/inference/models/${HF_BLIP_MODEL}`;
-  console.log('Using endpoint:', endpoint);
-  
   const imageData = fs.readFileSync(localPath);
   console.log('Image file size:', imageData.length, 'bytes');
   
-  try{
-    let resp;
+  // Try different endpoint formats
+  const endpoints = [
+    `https://router.huggingface.co/models/${HF_BLIP_MODEL}`,
+    `https://api-inference.huggingface.co/models/${HF_BLIP_MODEL}`
+  ];
+  
+  let resp;
+  let endpoint;
+  let lastError;
+  
+  for (endpoint of endpoints) {
+    console.log('Trying endpoint:', endpoint);
     try {
       resp = await axios.post(endpoint, imageData, {
         headers: {
           "Authorization": `Bearer ${HF_API_TOKEN}`,
           "Content-Type": "application/octet-stream"
         },
-        timeout: 30000
+        timeout: 30000,
+        validateStatus: function (status) {
+          // Don't throw on 4xx/5xx, we'll handle it
+          return status < 600;
+        }
       });
-    } catch (firstError) {
-      // If router fails, try api-inference endpoint
-      if (firstError.response?.status === 404 || firstError.response?.status === 410) {
-        console.log('Router endpoint failed, trying api-inference endpoint...');
-        endpoint = `https://api-inference.huggingface.co/models/${HF_BLIP_MODEL}`;
-        resp = await axios.post(endpoint, imageData, {
-          headers: {
-            "Authorization": `Bearer ${HF_API_TOKEN}`,
-            "Content-Type": "application/octet-stream"
-          },
-          timeout: 30000
-        });
+      
+      // Check if we got a valid response (not 404/410)
+      if (resp.status === 200 || resp.status === 201) {
+        console.log('Successfully connected to endpoint:', endpoint);
+        break;
+      } else if (resp.status === 503) {
+        // Model loading - this is actually OK, we'll handle it below
+        console.log('Model is loading (503), will retry...');
+        break;
       } else {
-        throw firstError;
+        console.log(`Endpoint returned status ${resp.status}, trying next...`);
+        lastError = new Error(`Status ${resp.status}`);
+        continue;
       }
+    } catch (error) {
+      console.log('Endpoint error:', error.message);
+      lastError = error;
+      continue;
     }
+  }
+  
+  if (!resp || (resp.status !== 200 && resp.status !== 201 && resp.status !== 503)) {
+    console.error('All endpoints failed. Last error:', lastError?.message);
+    throw lastError || new Error('All HuggingFace endpoints failed');
+  }
     
     console.log('BLIP API response status:', resp.status);
     console.log('BLIP API response data:', JSON.stringify(resp.data).substring(0, 200));

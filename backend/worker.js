@@ -137,34 +137,48 @@ async function blipCaptionImage(localPath){
     console.warn('HF_API_TOKEN not set, cannot generate image captions');
     return null; // Return null instead of error message to avoid storing error text
   }
-  // Try router endpoint first, fallback to api-inference
-  let endpoint = `https://router.huggingface.co/inference/models/${HF_BLIP_MODEL}`;
   const imageData = fs.readFileSync(localPath);
-  try{
-    let resp;
+  
+  // Try different endpoint formats
+  const endpoints = [
+    `https://router.huggingface.co/models/${HF_BLIP_MODEL}`,
+    `https://api-inference.huggingface.co/models/${HF_BLIP_MODEL}`
+  ];
+  
+  let resp;
+  let endpoint;
+  let lastError;
+  
+  for (endpoint of endpoints) {
     try {
       resp = await axios.post(endpoint, imageData, {
         headers: {
           "Authorization": `Bearer ${HF_API_TOKEN}`,
           "Content-Type": "application/octet-stream"
         },
-        timeout: 30000
+        timeout: 30000,
+        validateStatus: function (status) {
+          return status < 600;
+        }
       });
-    } catch (firstError) {
-      // If router fails, try api-inference endpoint
-      if (firstError.response?.status === 404 || firstError.response?.status === 410) {
-        endpoint = `https://api-inference.huggingface.co/models/${HF_BLIP_MODEL}`;
-        resp = await axios.post(endpoint, imageData, {
-          headers: {
-            "Authorization": `Bearer ${HF_API_TOKEN}`,
-            "Content-Type": "application/octet-stream"
-          },
-          timeout: 30000
-        });
+      
+      if (resp.status === 200 || resp.status === 201) {
+        break;
+      } else if (resp.status === 503) {
+        break;
       } else {
-        throw firstError;
+        lastError = new Error(`Status ${resp.status}`);
+        continue;
       }
+    } catch (error) {
+      lastError = error;
+      continue;
     }
+  }
+  
+  if (!resp || (resp.status !== 200 && resp.status !== 201 && resp.status !== 503)) {
+    throw lastError || new Error('All HuggingFace endpoints failed');
+  }
     
     // Handle different response formats
     if (Array.isArray(resp.data) && resp.data.length > 0) {
