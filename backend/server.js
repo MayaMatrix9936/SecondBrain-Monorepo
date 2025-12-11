@@ -512,14 +512,24 @@ app.post('/query', async (req,res)=>{
     // Improved prompt that handles edge cases better
     let prompt = `You are a helpful assistant. Use the context below to answer the question. `;
     if(ctx.trim().length === 0 || top.length === 0) {
+      // Check for documents with processing errors that match the query
+      const failedImages = storage.docs.filter(d => d.sourceType === 'image' && d.processingError);
+      const failedUrls = storage.docs.filter(d => d.sourceType === 'url' && d.processingError);
+      
       // Check if user is asking about a specific document type (image or URL)
       const isImageQuery = /image|picture|photo|what.*image|describe.*image/i.test(query);
-      const isUrlQuery = /url|link|website|web page|what.*url|what.*link/i.test(query);
+      const isUrlQuery = /url|link|website|web page|what.*url|what.*link|summarize.*url/i.test(query);
       
-      if(isImageQuery) {
-        prompt += `\n\nNote: The user is asking about an image, but no image content was found in the uploaded documents. This likely means the image was uploaded but automatic captioning failed or is not available. Please inform the user that the image was uploaded but its content could not be automatically described. Suggest they try uploading the image again, or if they have a HuggingFace API token, ensure it's properly configured.`;
+      if(isImageQuery && failedImages.length > 0) {
+        const imageNames = failedImages.map(d => d.filename || d.title).join(', ');
+        prompt += `\n\nNote: The user is asking about an image. I found ${failedImages.length} image document(s) in the system (${imageNames}), but automatic captioning failed for them. This means the images were uploaded but their content could not be automatically described. Please inform the user that the image(s) were uploaded but captioning is not available. To enable image captioning, they need to configure a HuggingFace API token (HF_API_TOKEN) in the backend environment variables. Without this token, images cannot be processed.`;
+      } else if(isUrlQuery && failedUrls.length > 0) {
+        const urlList = failedUrls.map(d => d.originalUri || d.title).join(', ');
+        prompt += `\n\nNote: The user is asking about a URL. I found ${failedUrls.length} URL document(s) in the system (${urlList}), but content extraction failed for them. This typically happens when URLs require authentication (like dashboard pages), use heavy JavaScript rendering, or have access restrictions. Please inform the user that the URL(s) were uploaded but their content could not be extracted. Suggest they either: 1) Provide the content directly as text, 2) Check if the URL requires login/authentication, or 3) Try a different publicly accessible URL.`;
+      } else if(isImageQuery) {
+        prompt += `\n\nNote: The user is asking about an image, but no image documents were found in the uploaded documents. Please inform them that no images have been uploaded yet, or suggest they upload an image.`;
       } else if(isUrlQuery) {
-        prompt += `\n\nNote: The user is asking about a URL, but no content was found from that URL. This likely means the URL was uploaded but content extraction failed (possibly due to authentication requirements, JavaScript rendering needs, or access restrictions). Please inform the user that the URL was uploaded but its content could not be extracted. Suggest they try providing the content directly or check if the URL requires special access.`;
+        prompt += `\n\nNote: The user is asking about a URL, but no URL documents were found in the uploaded documents. Please inform them that no URLs have been uploaded yet, or suggest they upload a URL.`;
       } else {
         prompt += `\n\nNote: No relevant context was found in the uploaded documents. Please inform the user that you don't have information about this topic in the uploaded documents, and suggest they upload relevant documents or try a different question.`;
       }
