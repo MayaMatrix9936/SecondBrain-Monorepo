@@ -212,7 +212,8 @@ async function blipCaptionImage(localPath){
     console.error('All endpoints failed. Last error:', lastError?.message);
     throw lastError || new Error('All HuggingFace endpoints failed');
   }
-    
+  
+  try {
     console.log('BLIP API response status:', resp.status);
     console.log('BLIP API response data:', JSON.stringify(resp.data).substring(0, 200));
     
@@ -264,7 +265,7 @@ async function blipCaptionImage(localPath){
     
     console.warn('Unexpected response format from BLIP API:', JSON.stringify(resp.data).substring(0, 500));
     return null; // Return null instead of error message
-  }catch(e){
+  } catch(e){
     console.error('BLIP caption error - Status:', e.response?.status);
     console.error('BLIP caption error - Data:', e.response?.data);
     console.error('BLIP caption error - Message:', e.message);
