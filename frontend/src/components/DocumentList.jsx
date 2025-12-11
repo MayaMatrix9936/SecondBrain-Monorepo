@@ -165,7 +165,7 @@ export default function DocumentList() {
                     )}
                   </div>
                   <p className="font-medium text-sm text-gray-900 dark:text-white truncate" title={doc.filename || doc.title || doc.originalUri || doc.docId}>
-                    {doc.filename || doc.title || (doc.originalUri && doc.originalUri !== 'inline' ? new URL(doc.originalUri).pathname.split('/').pop() : 'Text Document') || doc.docId}
+                    {doc.filename || doc.title || (doc.originalUri && doc.originalUri !== 'inline' ? (doc.originalUri.startsWith('http') ? new URL(doc.originalUri).pathname.split('/').pop() : doc.originalUri.split('/').pop()) : 'Text Document') || doc.docId}
                   </p>
                   <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
                     {new Date(doc.uploadedAt).toLocaleString()}

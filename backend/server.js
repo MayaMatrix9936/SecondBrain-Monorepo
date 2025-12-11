@@ -384,6 +384,75 @@ app.get('/docs', (req, res) => {
   res.json(docs);
 });
 
+// Chat history endpoints
+app.get('/conversations', (req, res) => {
+  const userId = req.headers['x-user-id'] || 'demo-user';
+  const storage = readStorage();
+  const conversations = (storage.conversations || []).filter(c => c.userId === userId);
+  // Sort by most recent first
+  conversations.sort((a, b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
+  res.json(conversations);
+});
+
+app.get('/conversations/:conversationId', (req, res) => {
+  const userId = req.headers['x-user-id'] || 'demo-user';
+  const { conversationId } = req.params;
+  const storage = readStorage();
+  const conversation = (storage.conversations || []).find(c => c.conversationId === conversationId && c.userId === userId);
+  if (!conversation) {
+    return res.status(404).json({ error: 'Conversation not found' });
+  }
+  res.json(conversation);
+});
+
+app.post('/conversations', (req, res) => {
+  const userId = req.headers['x-user-id'] || 'demo-user';
+  const { conversationId, title, messages } = req.body;
+  const storage = readStorage();
+  if (!storage.conversations) storage.conversations = [];
+  
+  const now = new Date().toISOString();
+  const existingIndex = storage.conversations.findIndex(c => c.conversationId === conversationId);
+  
+  if (existingIndex >= 0) {
+    // Update existing conversation
+    storage.conversations[existingIndex].messages = messages;
+    storage.conversations[existingIndex].updatedAt = now;
+    if (title) storage.conversations[existingIndex].title = title;
+  } else {
+    // Create new conversation
+    const firstUserMessage = messages.find(m => m.role === 'user');
+    const conversationTitle = title || (firstUserMessage ? firstUserMessage.content.substring(0, 50) : 'New Conversation');
+    storage.conversations.push({
+      conversationId,
+      userId,
+      title: conversationTitle,
+      messages,
+      createdAt: now,
+      updatedAt: now
+    });
+  }
+  
+  writeStorage(storage);
+  res.json({ ok: true, conversationId });
+});
+
+app.delete('/conversations/:conversationId', (req, res) => {
+  const userId = req.headers['x-user-id'] || 'demo-user';
+  const { conversationId } = req.params;
+  const storage = readStorage();
+  if (!storage.conversations) storage.conversations = [];
+  
+  const index = storage.conversations.findIndex(c => c.conversationId === conversationId && c.userId === userId);
+  if (index === -1) {
+    return res.status(404).json({ error: 'Conversation not found' });
+  }
+  
+  storage.conversations.splice(index, 1);
+  writeStorage(storage);
+  res.json({ ok: true });
+});
+
 
 const port = process.env.PORT || 4000;
 app.listen(port, ()=> console.log('Server v3 listening on', port));
