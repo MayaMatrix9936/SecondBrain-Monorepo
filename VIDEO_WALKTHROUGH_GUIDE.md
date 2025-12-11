@@ -1,300 +1,368 @@
-# Video Walkthrough Guide
+# Video Walkthrough Guide - Complete Script
 
 ## Overview
-Create a 5-10 minute video demonstrating the SecondBrain application and explaining key architectural decisions and trade-offs.
+This is a complete, detailed script for a 5-10 minute video walkthrough. You can read directly from this document while recording.
 
 ---
 
-## Video Structure (Suggested Timeline)
+## FULL SCRIPT
 
-### 1. Introduction (30 seconds)
-- **What to say:**
-  - "Hi, I'm [Your Name], and this is SecondBrain - a multi-modal personal knowledge management system"
-  - "I'll demonstrate the application and walk through key architectural decisions"
+### SECTION 1: INTRODUCTION (30-45 seconds)
 
-### 2. Application Demo (3-4 minutes)
+**Read this:**
 
-#### A. Upload Different Content Types
-**Show:**
-1. **Upload a PDF document**
-   - Drag and drop or select a PDF file
-   - Show the upload success message
-   - Explain: "The system accepts PDFs, which are processed asynchronously"
+"Hello! My name is [Your Name], and welcome to this walkthrough of SecondBrain - a multi-modal personal knowledge management system that I've built. In this video, I'll demonstrate how the application works, and more importantly, I'll walk you through the key architectural decisions I made and the trade-offs involved in each choice. This will give you insight into not just what the system does, but why it's built the way it is. Let's get started!"
 
-2. **Upload an image**
-   - Upload a PNG/JPG image
-   - Explain: "Images are captioned using HuggingFace BLIP model"
-   - Show processing status
+---
 
-3. **Upload text directly**
-   - Paste some text
-   - Show it being ingested
+### SECTION 2: APPLICATION DEMONSTRATION (3-4 minutes)
 
-4. **Upload a URL**
-   - Enter a web URL
-   - Explain: "The system scrapes and indexes web content"
+#### Part A: Uploading Different Content Types
 
-#### B. Query the Knowledge Base
-**Show:**
-1. **Basic query**
-   - Ask: "What did I learn about [topic from uploaded content]?"
-   - Show the AI response with sources
+**Read this:**
 
-2. **Temporal query**
-   - Ask: "What did I upload last week?"
-   - Explain: "The system uses chrono-node to parse natural language time expressions"
+"First, let me show you how SecondBrain handles different types of content. The system is truly multi-modal - it can ingest PDFs, audio files, images, web URLs, and plain text. Let me demonstrate each one."
 
-3. **Complex query**
-   - Ask a multi-part question
-   - Show how it retrieves relevant chunks
+**Now demonstrate:**
 
-#### C. Document Management
-**Show:**
-1. **View documents list**
-   - Show all uploaded documents
-   - Show document types, processing status
+"Here, I'm uploading a PDF document. I'll drag and drop it into the upload area. Notice how the system immediately acknowledges the upload and shows a success message. Behind the scenes, the file is being processed asynchronously - the backend stores the metadata and enqueues a job to a Redis queue. A worker will process this job in the background, extracting text from the PDF, chunking it, generating embeddings, and storing it in our vector database. This async approach means users get immediate feedback rather than waiting for processing to complete."
 
-2. **Search documents**
-   - Use the search functionality
-   - Filter by type
+**Continue:**
 
-3. **Delete a document**
-   - Show the delete confirmation modal
-   - Explain: "Deletion removes from both vector store and metadata"
+"Now let me upload an image. I'll select this PNG file. For images, the system uses HuggingFace's BLIP model to generate descriptive captions. The caption becomes the text that gets embedded and indexed. This allows you to search for images using natural language queries about their content, not just filenames."
 
-#### D. Chat History
-**Show:**
-1. **View conversation history**
-   - Show the sidebar with past conversations
-   - Load a previous conversation
+**Continue:**
 
-2. **Start new conversation**
-   - Create a new chat
-   - Show conversation persistence
+"Next, I'll paste some plain text directly. This is useful for quick notes or snippets of information. The text is ingested immediately and processed the same way as other content types."
 
-#### E. Dark Mode
-**Show:**
-- Toggle dark/light mode
-- Explain: "Theme preference is saved in localStorage"
+**Continue:**
 
-### 3. Architecture Walkthrough (4-5 minutes)
+"Finally, let me show you URL ingestion. I'll enter a web URL here. The system will scrape the webpage, extract the main content, and index it. This is particularly useful for saving articles, blog posts, or any web content you want to remember and query later."
 
-#### A. High-Level Architecture
-**What to show/draw:**
-```
-Frontend (React) → Backend API (Express) → Worker (Background Jobs)
-                                              ↓
-                                    Redis Queue (BullMQ)
-                                              ↓
-                                    Chroma Vector Store
-                                              ↓
-                                    External APIs (OpenAI, HF)
-```
+#### Part B: Querying the Knowledge Base
 
-**What to say:**
-- "The system uses a microservices architecture"
-- "Frontend communicates with Backend via REST API"
-- "Heavy processing happens asynchronously via worker jobs"
-- "Vector storage is handled by a separate Chroma service"
+**Read this:**
 
-#### B. Multi-Modal Ingestion Pipeline
-**What to explain:**
-1. **Upload Flow:**
-   - "When a file is uploaded, the backend stores metadata and enqueues a job"
-   - "The worker processes jobs asynchronously"
-   - "Different content types are transformed to text: PDFs parsed, audio transcribed, images captioned"
+"Now let's see how the system answers questions. The real power of SecondBrain is in its ability to understand natural language queries and retrieve relevant information from your knowledge base."
 
-2. **Chunking Strategy:**
-   - "Text is chunked into ~400 word segments with 15% overlap"
-   - "This balances context preservation with retrieval precision"
+**Demonstrate:**
 
-3. **Embedding Generation:**
-   - "Each chunk is converted to a 1536-dimensional vector using OpenAI's text-embedding-3-small"
-   - "Vectors are stored in Chroma with metadata"
+"I'll ask: 'What did I learn about [topic from your uploaded content]?' Watch how the system processes this query. First, it generates an embedding of the query using OpenAI's text-embedding-3-small model. Then it searches the vector database for semantically similar chunks. But it doesn't stop there - the system uses a hybrid retrieval approach that combines semantic similarity with keyword matching and recency scoring. The top results are sent to GPT-4o-mini as context, and the LLM generates an answer based only on the retrieved information. Notice how it cites sources - you can see which documents and chunks were used to generate the answer."
 
-#### C. Query Processing
-**What to explain:**
-1. **Hybrid Retrieval:**
-   - "Queries use a hybrid scoring system"
-   - "85% semantic similarity, 15% keyword matching, 10% recency boost"
-   - "This combines the best of vector search and traditional search"
+**Continue:**
 
-2. **Temporal Filtering:**
-   - "chrono-node parses natural language time expressions"
-   - "Filters are applied before scoring for efficiency"
+"Let me try a temporal query: 'What did I upload last week?' The system uses chrono-node, a natural language date parser, to understand time expressions like 'last week', 'yesterday', or 'in December'. It filters the candidate chunks to only those within the specified time window before scoring them. This makes time-based queries much more accurate and efficient."
 
-3. **RAG (Retrieval-Augmented Generation):**
-   - "Top-k chunks are sent to GPT-4o-mini as context"
-   - "The LLM generates answers based only on retrieved context"
+**Continue:**
 
-#### D. Data Storage
-**What to explain:**
-1. **Vector Store (Chroma):**
-   - "Per-user collections for data isolation"
-   - "HNSW index for fast similarity search"
-   - "DuckDB + Parquet for persistence"
+"Here's a more complex query: [ask a multi-part question]. Notice how the system retrieves information from multiple documents and synthesizes an answer. The hybrid scoring ensures we get both semantically relevant and keyword-matched results, giving us comprehensive coverage of the topic."
 
-2. **Metadata Store:**
-   - "Currently using storage.json (prototype)"
-   - "In production, would use PostgreSQL or MongoDB"
-   - "Stores document metadata, chunks, and knowledge graph"
+#### Part C: Document Management
 
-### 4. Key Architectural Decisions & Trade-offs (2-3 minutes)
+**Read this:**
+
+"Let me show you the document management features. Here's the list of all uploaded documents. You can see each document's type - whether it's a PDF, image, audio file, text, or URL. The status indicator shows whether processing is complete. Green checkmarks mean the document has been fully processed and is searchable."
+
+**Demonstrate:**
+
+"I can search through my documents using this search bar. Let me filter by type - I'll show only PDFs. The system also displays the actual filename or title, making it easy to identify documents. Earlier versions showed internal paths or IDs, but I improved this to show user-friendly names."
+
+**Continue:**
+
+"Let me delete a document. When I click delete, a confirmation modal appears. This prevents accidental deletions. When confirmed, the system removes the document from the vector store, deletes the metadata, and removes the physical file if it exists. This ensures complete cleanup."
+
+#### Part D: Chat History
+
+**Read this:**
+
+"The system maintains conversation history, so you can revisit past queries and continue conversations. Here's the conversation sidebar. I can see all my past conversations, search through them, and load any one to see the full message history."
+
+**Demonstrate:**
+
+"Let me load a previous conversation. Notice how all the messages are preserved. I can continue this conversation or start a new one. Each conversation has a title that's automatically generated or can be set manually. This makes it easy to organize and find past discussions."
+
+**Continue:**
+
+"When I start a new conversation, it creates a fresh context. The system saves conversations to the backend, so they persist across sessions. I can also delete conversations I no longer need."
+
+#### Part E: Dark Mode
+
+**Read this:**
+
+"One final feature I want to show is the dark mode toggle. The system supports both light and dark themes, and your preference is saved in localStorage. The theme persists across sessions and provides a better experience for different lighting conditions or personal preferences."
+
+---
+
+### SECTION 3: ARCHITECTURE WALKTHROUGH (4-5 minutes)
+
+#### Part A: High-Level Architecture
+
+**Read this:**
+
+"Now let me walk you through the architecture. Understanding the system design will help you appreciate the decisions I made and why certain trade-offs were necessary."
+
+**Draw or show diagram:**
+
+"The system follows a microservices architecture. At the front, we have a React application built with Vite. It communicates with a Node.js Express backend via REST API. The backend handles HTTP requests, manages file uploads, and processes queries. But here's the key design decision - heavy processing happens asynchronously through a worker service."
+
+**Continue:**
+
+"When a file is uploaded, the backend doesn't process it immediately. Instead, it stores metadata and enqueues a job to a Redis queue using BullMQ. A separate worker service consumes these jobs. This separation allows the API to remain responsive while processing happens in the background. Multiple workers can run in parallel, providing horizontal scalability."
+
+**Continue:**
+
+"The worker communicates with a Chroma service - a Python FastAPI microservice that wraps ChromaDB, our vector database. Chroma handles all vector operations: storing embeddings, performing similarity searches, and managing per-user collections. This separation allows us to scale the vector database independently from the API."
+
+**Continue:**
+
+"External services include OpenAI for embeddings and chat completions, and HuggingFace for image captioning. All of these are called asynchronously to avoid blocking the main application flow."
+
+#### Part B: Multi-Modal Ingestion Pipeline
+
+**Read this:**
+
+"Let me dive deeper into the ingestion pipeline, as this is where much of the complexity lies."
+
+**Explain:**
+
+"When content arrives, it goes through a transformation pipeline. PDFs are parsed using pdf-parse, extracting text while preserving structure. Audio files are sent to OpenAI's Whisper API for transcription. Images go to HuggingFace's BLIP model for captioning. URLs are scraped server-side using cheerio, extracting text from paragraph tags. Plain text is used directly."
+
+**Continue:**
+
+"Once we have text, it's chunked into segments of approximately 400 words with a 15% overlap. This chunking strategy balances several concerns. Smaller chunks provide more precise retrieval, but lose context. Larger chunks preserve context but may include irrelevant information. The 400-word size, combined with 15% overlap, ensures we capture complete thoughts while maintaining retrieval precision. The overlap prevents important information from being split across chunk boundaries."
+
+**Continue:**
+
+"Each chunk is then converted to a 1536-dimensional vector using OpenAI's text-embedding-3-small model. These embeddings capture semantic meaning, allowing the system to find conceptually similar content even when exact keywords don't match. The vectors are stored in Chroma along with metadata - document ID, user ID, source type, and timestamps. This metadata enables filtering and hybrid scoring later."
+
+**Continue:**
+
+"The system also extracts entities from the combined text using an LLM, building a simple knowledge graph. While not heavily used in the current version, this provides a foundation for future graph-based query capabilities."
+
+#### Part C: Query Processing and Retrieval
+
+**Read this:**
+
+"The query processing system is where the real intelligence happens. It's not just a simple vector search - it's a sophisticated hybrid retrieval system."
+
+**Explain:**
+
+"When a query comes in, several things happen in parallel. First, the query text is parsed to extract temporal constraints using chrono-node. Phrases like 'last week' or 'in December' are converted to date ranges. The query is also converted to an embedding using the same model used for documents."
+
+**Continue:**
+
+"The system then queries Chroma for candidate chunks. I retrieve 3 times the requested number - so if the user wants 5 results, I get 15 candidates. This over-retrieval is important because we'll filter and re-score these candidates."
+
+**Continue:**
+
+"Here's where the hybrid scoring comes in. Each candidate gets three scores. First, semantic similarity from the vector search - this captures conceptual relevance. Second, keyword matching - a simple substring frequency score that catches exact matches. Third, recency boost - an exponential decay function that favors recent documents. The final score combines these: 85% semantic, 15% keyword, and 10% recency boost. This hybrid approach gives us the best of both worlds - semantic understanding plus traditional search capabilities."
+
+**Continue:**
+
+"Before final scoring, temporal filters are applied. If the user asked about 'last week', only chunks from that time period are considered. This filtering happens early to improve efficiency."
+
+**Continue:**
+
+"The top-k chunks are then sent to GPT-4o-mini as context. The prompt instructs the LLM to answer only using the provided context, ensuring accuracy and preventing hallucination. The LLM generates a natural language answer, and the system returns both the answer and the source citations."
+
+#### Part D: Data Storage Architecture
+
+**Read this:**
+
+"Data storage is split across multiple systems, each optimized for its purpose."
+
+**Explain:**
+
+"Vector embeddings are stored in Chroma, which uses DuckDB for metadata and Parquet files for vector storage. Each user has their own collection, providing data isolation. This per-user collection design enables horizontal scaling - we can shard collections across multiple Chroma instances as needed. The HNSW index provides fast approximate nearest neighbor search, which is crucial for good performance at scale."
+
+**Continue:**
+
+"Metadata is currently stored in a JSON file called storage.json. This includes document metadata, chunk references, and the knowledge graph. I chose this for the prototype because it requires no database setup and is easy to understand. However, I'm fully aware this isn't production-ready. In a production system, I would migrate to PostgreSQL with pgvector extension, or MongoDB with vector search capabilities. The JSON file approach trades operational simplicity for scalability and concurrency safety."
+
+**Continue:**
+
+"File uploads are stored on the filesystem in an uploads directory. In production, these would go to object storage like AWS S3 or similar. Redis serves dual purposes - as a job queue via BullMQ, and as a caching layer for frequently accessed data."
+
+---
+
+### SECTION 4: KEY ARCHITECTURAL DECISIONS & TRADE-OFFS (2-3 minutes)
+
+**Read this:**
+
+"Now let me walk through the key architectural decisions I made and the trade-offs involved. These decisions shape the entire system, and understanding them is crucial."
 
 #### Decision 1: Chroma vs Pinecone
-**What to say:**
-- **Chosen: Chroma**
-  - ✅ Self-hostable, open source
-  - ✅ Good for prototyping and local-first
-  - ✅ No vendor lock-in
-  - ❌ Less managed scaling than Pinecone
-  - ❌ Smaller community
 
-- **Trade-off:** Chose flexibility and self-hosting over managed service convenience
+**Read this:**
+
+"My first major decision was choosing a vector database. I evaluated Chroma and Pinecone, two popular options."
+
+**Explain:**
+
+"I chose Chroma for several reasons. First, it's open source and self-hostable, which means no vendor lock-in and no per-query costs. Second, it's excellent for prototyping and local-first deployments. Third, it uses DuckDB and Parquet, which are well-understood technologies. However, this choice comes with trade-offs. Pinecone is a managed service with better scaling characteristics and production reliability. It handles infrastructure, monitoring, and optimization automatically. But it's more expensive and creates vendor dependency."
+
+**Continue:**
+
+"The trade-off here is flexibility and cost control versus managed convenience. For a prototype and learning project, Chroma was the right choice. For a production system at scale, I might reconsider Pinecone or other managed options."
 
 #### Decision 2: JSON File vs Database
-**What to say:**
-- **Current: storage.json**
-  - ✅ Simple, no database setup needed
-  - ✅ Easy to understand for prototype
-  - ❌ Not concurrent-safe
-  - ❌ Limited scalability
 
-- **Production Path:** Would migrate to PostgreSQL + pgvector
-- **Trade-off:** Simplicity for prototype vs production-ready infrastructure
+**Read this:**
+
+"Another significant decision was how to store metadata. I chose a JSON file for the prototype, but this is clearly not production-ready."
+
+**Explain:**
+
+"The JSON file approach has clear benefits: no database setup required, easy to inspect and debug, perfect for prototyping. It makes the system immediately runnable without external dependencies. However, it has serious limitations: no concurrent write safety, limited scalability, no transactions, and potential data loss risks."
+
+**Continue:**
+
+"The trade-off is development speed and simplicity versus production readiness. For this project, I prioritized getting a working system quickly. In production, I would absolutely migrate to PostgreSQL with pgvector, which provides ACID transactions, concurrent access, and better performance. The migration path is clear - the data structure in storage.json maps directly to database tables."
 
 #### Decision 3: OpenAI APIs vs Local Models
-**What to say:**
-- **Chosen: OpenAI APIs**
-  - ✅ High quality embeddings and chat
-  - ✅ Easy integration
-  - ✅ Proven performance
-  - ❌ External dependency
-  - ❌ API costs
-  - ❌ Privacy concerns
 
-- **Trade-off:** Quality and ease of use vs privacy and cost control
-- **Future:** Could migrate to local models (e.g., sentence-transformers, Ollama)
+**Read this:**
+
+"I chose to use OpenAI's APIs for embeddings and chat, rather than running local models. This was a deliberate trade-off."
+
+**Explain:**
+
+"OpenAI's APIs provide excellent quality. The text-embedding-3-small model produces high-quality embeddings, and GPT-4o-mini provides reliable chat completions. Integration is straightforward, and I don't need to manage model infrastructure. However, this creates external dependencies, ongoing API costs, and privacy concerns since data leaves my system."
+
+**Continue:**
+
+"The alternative would be local models - using sentence-transformers for embeddings and something like Ollama for chat. This would provide better privacy, no API costs, and offline capability. But it requires more infrastructure, lower quality embeddings potentially, and more maintenance overhead."
+
+**Continue:**
+
+"I chose OpenAI for quality and simplicity, accepting the trade-offs. In a production system, I might offer both options - allowing users to choose between cloud APIs for convenience or local models for privacy."
 
 #### Decision 4: Fixed Chunking vs Semantic Chunking
-**What to say:**
-- **Chosen: Fixed size with sentence-aware splitting**
-  - ✅ Simple implementation
-  - ✅ Predictable behavior
-  - ✅ Easy to tune
-  - ❌ May split sentences
-  - ❌ Not context-aware
 
-- **Trade-off:** Simplicity and predictability vs more intelligent chunking
+**Read this:**
 
-#### Decision 5: Async Processing
-**What to say:**
-- **Chosen: BullMQ + Redis queue**
-  - ✅ Non-blocking uploads
-  - ✅ Scalable worker pool
-  - ✅ Job retry and failure handling
-  - ✅ Can scale workers horizontally
+"For text chunking, I implemented fixed-size chunking with sentence awareness, rather than semantic chunking."
 
-- **Trade-off:** Added complexity vs better user experience
+**Explain:**
 
-### 5. Scalability & Future Enhancements (1 minute)
-**What to say:**
-- "The system is designed for horizontal scaling"
-- "Multiple workers can process jobs in parallel"
-- "Per-user collections enable sharding"
-- "Future: Authentication, advanced search, multi-language support"
+"Fixed-size chunking is simple and predictable. I know exactly how many chunks a document will produce, making it easier to reason about storage and retrieval. The 400-word size with 15% overlap works well for most content. Sentence-aware splitting prevents mid-sentence breaks, maintaining readability."
 
-### 6. Conclusion (30 seconds)
-**What to say:**
-- "This architecture balances simplicity with scalability"
-- "The system demonstrates modern RAG techniques"
-- "Thank you for watching!"
+**Continue:**
 
----
+"Semantic chunking would be more intelligent - splitting at natural topic boundaries rather than arbitrary word counts. This could improve retrieval quality by keeping related concepts together. However, it's more complex to implement, less predictable, and requires additional processing."
 
-## Technical Setup for Recording
+**Continue:**
 
-### Screen Recording Tools:
-- **Windows**: OBS Studio, Windows Game Bar (Win+G), or PowerPoint Screen Recording
-- **Mac**: QuickTime Player, ScreenFlow
-- **Online**: Loom, Screencast-O-Matic
+"I chose fixed chunking for simplicity and predictability. The overlap helps mitigate the downsides. In production, I might experiment with semantic chunking for certain document types while keeping fixed chunking as the default."
 
-### Tips:
-1. **Prepare beforehand:**
-   - Have sample files ready (PDF, image, text)
-   - Test all features before recording
-   - Clear browser cache for clean demo
+#### Decision 5: Async Processing Architecture
 
-2. **Recording settings:**
-   - Record at 1080p minimum
-   - Use good microphone/headset
-   - Record in quiet environment
-   - Show cursor movements clearly
+**Read this:**
 
-3. **Post-production:**
-   - Add captions/subtitles if possible
-   - Trim unnecessary pauses
-   - Add title slide with project name
-   - Add transitions between sections
+"Perhaps the most important architectural decision was using async processing with a job queue."
+
+**Explain:**
+
+"I implemented BullMQ with Redis for job queuing. When files are uploaded, jobs are enqueued immediately, and the API responds right away. Workers process jobs asynchronously. This provides several benefits: the API stays responsive, jobs can be retried on failure, and workers can scale horizontally. Multiple workers can process jobs in parallel, and we can add more workers as load increases."
+
+**Continue:**
+
+"The alternative would be synchronous processing - processing uploads immediately in the API request. This would be simpler but would block the API, leading to poor user experience for large files. Users would have to wait for PDF parsing, embedding generation, and vector storage to complete before getting a response."
+
+**Continue:**
+
+"The trade-off is complexity versus user experience. The async approach adds Redis, BullMQ, and worker services, but provides a much better user experience. This was absolutely the right choice, and I'd make it again in production."
 
 ---
 
-## Key Points to Emphasize
+### SECTION 5: SCALABILITY & FUTURE ENHANCEMENTS (1 minute)
 
-1. **Multi-modal support** - Show different content types
-2. **Async processing** - Explain why jobs are queued
-3. **Hybrid retrieval** - Explain the scoring algorithm
-4. **User isolation** - Explain per-user collections
-5. **Trade-offs** - Be honest about limitations and why choices were made
-6. **Production readiness** - Acknowledge what would need to change
+**Read this:**
 
----
+"Let me briefly discuss scalability and future enhancements."
 
-## Sample Script Outline
+**Explain:**
 
-### Opening (30s)
-"Hi, I'm [Name]. Today I'll demonstrate SecondBrain, a multi-modal knowledge management system I built. I'll show you how it works and explain the key architectural decisions I made."
+"The architecture is designed for horizontal scaling. The API is stateless and can run multiple instances behind a load balancer. Workers can scale independently based on queue depth. Chroma collections can be sharded across instances. Redis can be clustered for high availability."
 
-### Demo (3-4 min)
-[Walk through application features as outlined above]
+**Continue:**
 
-### Architecture (4-5 min)
-"Now let me explain the architecture. The system uses a microservices approach with..."
+"For future enhancements, I would prioritize authentication and authorization - currently the system uses a simple user ID header. I'd implement JWT-based authentication with proper session management. I'd migrate metadata storage to PostgreSQL for production reliability. I'd add advanced search features like faceted search and saved searches. Multi-language support would be valuable. And I'd consider adding a local-first mode that can run entirely offline with local models."
 
-[Explain components and data flow]
+**Continue:**
 
-### Trade-offs (2-3 min)
-"I made several important architectural decisions. Let me walk through the key trade-offs..."
-
-[Explain decisions as outlined]
-
-### Closing (30s)
-"In summary, this architecture balances simplicity with scalability, and demonstrates modern RAG techniques. The system is ready for production with some enhancements like proper authentication and database migration. Thanks for watching!"
+"The current architecture provides a solid foundation for these enhancements without requiring major refactoring."
 
 ---
 
-## Checklist Before Recording
+### SECTION 6: CONCLUSION (30-45 seconds)
 
-- [ ] Application is running and tested
-- [ ] Sample files prepared (PDF, image, text, URL)
-- [ ] Browser bookmarks cleared for clean demo
-- [ ] Screen recording software ready
-- [ ] Microphone tested
-- [ ] Script reviewed
-- [ ] Architecture diagrams prepared (if drawing on screen)
-- [ ] Code editor ready (if showing code)
+**Read this:**
 
----
+"In summary, SecondBrain demonstrates a modern RAG architecture with multi-modal ingestion, hybrid retrieval, and async processing. The key architectural decisions I made prioritize user experience and development speed while maintaining a clear path to production scalability."
 
-## Estimated Timing
+**Continue:**
 
-- Introduction: 30 seconds
-- Application Demo: 3-4 minutes
-- Architecture Explanation: 4-5 minutes
-- Trade-offs Discussion: 2-3 minutes
-- **Total: 10-12 minutes** (can trim to 8-10 minutes)
+"Each trade-off was made deliberately, balancing simplicity with functionality, and prototype speed with production readiness. The system shows how modern AI capabilities can be integrated into a practical knowledge management tool."
+
+**Continue:**
+
+"Thank you for watching this walkthrough. I hope it gave you insight into both what the system does and why it's built this way. If you have questions about any of the architectural decisions or want to see specific code, feel free to check out the repository. Thanks again!"
 
 ---
 
-Good luck with your video! Remember to be clear, confident, and explain your reasoning behind each decision.
+## RECORDING TIPS
 
+### Before Recording:
+
+1. **Test Everything**: Make sure all features work before recording
+2. **Prepare Sample Files**: Have a PDF, image, text snippet, and URL ready
+3. **Clear Browser**: Use a clean browser session or incognito mode
+4. **Check Audio**: Test your microphone and ensure quiet environment
+5. **Screen Setup**: Close unnecessary applications, use a clean desktop
+6. **Practice Run**: Do a practice run to get comfortable with the script
+
+### During Recording:
+
+1. **Speak Clearly**: Read naturally, don't rush
+2. **Show, Don't Just Tell**: Actually demonstrate features as you describe them
+3. **Pause for Effect**: Don't be afraid to pause briefly between sections
+4. **Cursor Movement**: Move your cursor deliberately to guide viewer attention
+5. **Stay Calm**: If you make a mistake, pause and continue - you can edit later
+
+### Post-Production:
+
+1. **Edit Out Mistakes**: Remove long pauses and mistakes
+2. **Add Title Slide**: Include project name and your name
+3. **Add Captions**: If possible, add subtitles for accessibility
+4. **Trim Dead Time**: Remove unnecessary waiting or loading screens
+5. **Add Transitions**: Smooth transitions between sections
+6. **Final Check**: Watch the full video before submitting
+
+---
+
+## TIMING BREAKDOWN
+
+- **Introduction**: 30-45 seconds
+- **Application Demo**: 3-4 minutes
+- **Architecture Walkthrough**: 4-5 minutes  
+- **Trade-offs Discussion**: 2-3 minutes
+- **Scalability & Future**: 1 minute
+- **Conclusion**: 30-45 seconds
+
+**Total: 11-14 minutes** (can be trimmed to 8-10 minutes if needed)
+
+---
+
+## KEY POINTS TO REMEMBER
+
+1. **Be Natural**: Read the script naturally, don't sound robotic
+2. **Demonstrate**: Actually use the application, don't just describe it
+3. **Explain Reasoning**: For each decision, explain WHY, not just WHAT
+4. **Be Honest**: Acknowledge limitations and trade-offs openly
+5. **Show Confidence**: You made deliberate choices - own them
+6. **Stay Focused**: Keep to the main points, don't get sidetracked
+
+---
+
+Good luck with your recording! This script provides everything you need to create a comprehensive and professional walkthrough video.
