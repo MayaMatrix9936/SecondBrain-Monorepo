@@ -30,7 +30,8 @@ const cors = require("cors");
 app.use(cors({
   origin: process.env.FRONTEND_URL || "http://localhost:5173",
   methods: ["GET", "POST", "DELETE"],
-  allowedHeaders: ["Content-Type", "x-user-id"]
+  allowedHeaders: ["Content-Type", "x-user-id"],
+  credentials: true
 }));
 
 app.use(express.json({ limit: "50mb" }));

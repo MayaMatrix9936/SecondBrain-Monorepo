@@ -62,8 +62,10 @@ export default function Uploader({ onUploadSuccess }) {
       }
     } catch (error) {
       console.error('Upload error:', error);
-      showError('Upload failed. Please try again.');
-      setMessage('');
+      const errorMessage = error.response?.data?.error || error.response?.data?.details || error.message || 'Upload failed. Please try again.';
+      console.error('Error details:', error.response?.data);
+      showError(`Upload failed: ${errorMessage}`);
+      setMessage(`Error: ${errorMessage}`);
     } finally {
       setUploading(false);
     }
