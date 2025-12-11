@@ -21,16 +21,9 @@ require('dotenv').config();
 const OPENAI_KEY = process.env.OPENAI_API_KEY;
 if (!OPENAI_KEY) { console.error('Please set OPENAI_API_KEY'); process.exit(1); }
 const CHROMA_URL = process.env.CHROMA_URL || 'http://localhost:8000';
-const HF_API_TOKEN = process.env.HF_API_TOKEN;
-const HF_BLIP_MODEL = process.env.HF_BLIP_MODEL || "Salesforce/blip-image-captioning-large";
 
-// Log token status (without exposing the actual token)
-if (HF_API_TOKEN) {
-  console.log('✓ HF_API_TOKEN is configured (length:', HF_API_TOKEN.length, 'chars)');
-  console.log('✓ Image captioning enabled with model:', HF_BLIP_MODEL);
-} else {
-  console.warn('⚠ HF_API_TOKEN not set - image captioning will be disabled');
-}
+// Image captioning uses OpenAI Vision API (gpt-4o-mini)
+console.log('✓ Image captioning enabled using OpenAI Vision API');
 
 const app = express();
 const cors = require("cors");
@@ -152,10 +145,58 @@ async function scrapeUrl(url){
 }
 
 async function blipCaptionImage(localPath){
-  // HuggingFace Inference API is currently unavailable/deprecated
-  // Image captioning is disabled until an alternative solution is implemented
-  console.warn('Image captioning via HuggingFace is currently unavailable - API endpoints have been deprecated');
-  return null;
+  // Use OpenAI Vision API for image captioning
+  try {
+    console.log('Attempting image captioning with OpenAI Vision API');
+    const imageData = fs.readFileSync(localPath);
+    const imageBase64 = imageData.toString('base64');
+    
+    // Determine image MIME type from file extension
+    const ext = path.extname(localPath).toLowerCase();
+    let mimeType = 'image/png';
+    if (ext === '.jpg' || ext === '.jpeg') mimeType = 'image/jpeg';
+    else if (ext === '.webp') mimeType = 'image/webp';
+    
+    const resp = await axios.post(
+      'https://api.openai.com/v1/chat/completions',
+      {
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              {
+                type: 'text',
+                text: 'Describe this image in detail. Provide a clear, comprehensive description of what you see, including any text, objects, people, settings, colors, and activities.'
+              },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:${mimeType};base64,${imageBase64}`
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: 300,
+        temperature: 0.3
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${OPENAI_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 30000
+      }
+    );
+    
+    const caption = resp.data.choices[0].message.content;
+    console.log('Image caption generated:', caption.substring(0, 100) + '...');
+    return caption;
+  } catch (e) {
+    console.error('OpenAI Vision API error:', e.response?.data || e.message);
+    return null;
+  }
 }
 
 async function chromaUpsert(collection, items){
