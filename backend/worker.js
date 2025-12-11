@@ -72,27 +72,57 @@ async function scrapeUrl(url){
         'Upgrade-Insecure-Requests': '1'
       },
       timeout: 10000, // 10 second timeout
-      maxRedirects: 5
+      maxRedirects: 5,
+      validateStatus: function (status) {
+        return status >= 200 && status < 400; // Accept 2xx and 3xx
+      }
     });
     const $ = cheerio.load(r.data);
+    
+    // Check for common authentication/login page indicators
+    const bodyText = $('body').text().toLowerCase();
+    const hasLoginIndicators = /sign in|log in|login|authentication required|please log in|access denied|unauthorized/i.test(bodyText) ||
+                                $('input[type="password"]').length > 0 ||
+                                $('form[action*="login"], form[action*="signin"], form[action*="auth"]').length > 0;
+    
+    // Check if we got mostly scripts/tracking code (like Google Tag Manager)
+    const scriptCount = $('script').length;
+    const hasMinimalContent = bodyText.trim().length < 200;
+    const isMostlyScripts = scriptCount > 5 && hasMinimalContent;
+    
+    // Check for dashboard URLs that likely require auth
+    const isDashboardUrl = /dashboard|admin|console|portal/i.test(url);
+    
+    if(hasLoginIndicators || (isDashboardUrl && isMostlyScripts)) {
+      throw new Error('URL requires authentication. Dashboard and admin pages typically require login to access content.');
+    }
+    
     let text='';
     // Extract text from various elements
-    $('p, article, main, .content, .post, .article').each((i,el)=> {
+    $('p, article, main, .content, .post, .article, section').each((i,el)=> {
       const txt = $(el).text().trim();
       if(txt.length > 20) text += txt + '\n\n';
     });
     // Fallback: extract all text if no paragraphs found
     if(!text.trim()) {
       // Remove script and style elements
-      $('script, style, nav, header, footer').remove();
+      $('script, style, nav, header, footer, iframe').remove();
       text = $('body').text().replace(/\s+/g, ' ').trim();
     }
+    
+    // Check if extracted text is mostly tracking/script content
+    if(text.toLowerCase().includes('googletagmanager') && text.length < 500) {
+      throw new Error('URL appears to be a login page or requires authentication. Only tracking scripts were found.');
+    }
+    
     const title = $('head title').text() || $('h1').first().text() || url;
     // Clean up text
     text = text.replace(/\s+/g, ' ').trim();
+    
     if(!text || text.length < 10) {
       throw new Error('No meaningful content extracted from URL');
     }
+    
     return { title: title.trim() || url, text };
   }catch(e){
     console.error('scrape err', e.message || e);
