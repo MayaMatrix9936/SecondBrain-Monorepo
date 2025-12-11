@@ -1105,13 +1105,49 @@ app.delete('/trash/:itemId', async (req, res) => {
     
     // Permanently delete
     if (trashItem.type === 'document') {
-      // Delete uploaded file if it exists
       const doc = trashItem.data.doc;
-      if (doc.originalUri && doc.originalUri.startsWith('/') && fs.existsSync(doc.originalUri)) {
+      
+      // Delete uploaded file if it exists - handle both absolute and relative paths
+      if (doc.originalUri) {
+        let filePath = doc.originalUri;
+        
+        // If it's a relative path starting with /, make it absolute
+        if (filePath.startsWith('/') && !filePath.startsWith(__dirname)) {
+          // It's a relative path from root, try uploads directory
+          filePath = path.join(__dirname, 'uploads', path.basename(filePath));
+        } else if (!path.isAbsolute(filePath)) {
+          // Relative path, try uploads directory
+          filePath = path.join(__dirname, 'uploads', filePath);
+        }
+        
+        // Also try the original path as-is
+        const pathsToTry = [
+          filePath,
+          doc.originalUri,
+          path.join(__dirname, 'uploads', path.basename(doc.originalUri)),
+          path.join(uploadsDir, path.basename(doc.originalUri))
+        ];
+        
+        for (const fileToDelete of pathsToTry) {
+          if (fs.existsSync(fileToDelete)) {
+            try {
+              fs.unlinkSync(fileToDelete);
+              console.log('Permanently deleted file:', fileToDelete);
+              break; // File found and deleted, no need to try other paths
+            } catch(e) {
+              console.warn('Could not delete file:', fileToDelete, e.message);
+            }
+          }
+        }
+      }
+      
+      // Ensure chunks are deleted from Chroma (they should already be, but double-check)
+      const chunkIds = trashItem.data.chunkIds || [];
+      if (chunkIds.length > 0) {
         try {
-          fs.unlinkSync(doc.originalUri);
+          await chromaDelete(userId, chunkIds);
         } catch(e) {
-          console.warn('Could not delete file:', doc.originalUri, e.message);
+          console.warn('Could not delete chunks from Chroma (may already be deleted):', e.message);
         }
       }
     }
