@@ -329,7 +329,6 @@ export default function Chat() {
     }
   };
 
-
   const formatTimestamp = (timestamp) => {
     if (!timestamp) return '';
     const date = new Date(timestamp);
