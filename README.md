@@ -8,20 +8,22 @@ A comprehensive AI-powered personal knowledge management system that enables use
 - **Semantic Search**: Vector-based retrieval using OpenAI embeddings for intelligent document search
 - **Temporal Queries**: Natural language time-based filtering (e.g., "last week", "last month")
 - **Hybrid Retrieval**: Combines semantic similarity, keyword matching, and recency scoring
-- **Real-time Chat Interface**: Interactive Q&A with streaming responses
+- **Real-time Chat Interface**: Interactive Q&A with token-by-token streaming responses (like ChatGPT)
+- **Streaming Features**: Stop/cancel generation, regenerate responses, message timestamps
+- **Source Citations**: Clickable source links with document deduplication
 - **Chat History**: Save and manage conversation history
 - **Document Management**: Upload, view, search, and delete documents
+- **Trash/Recovery**: 30-day recovery window for deleted items
 - **Dark Mode**: Beautiful dark/light theme support
 - **User Isolation**: Per-user data separation for privacy and scalability
-- **Async Processing**: Background job queue for efficient ingestion
+- **Async Processing**: Background job queue with batch embedding generation for fast ingestion
 
 ## 📋 Prerequisites
 
 - Docker and Docker Compose
 - Node.js 18+ (for local development)
 - Python 3.8+ (for Chroma service)
-- OpenAI API Key
-- HuggingFace API Token (for image captioning)
+- OpenAI API Key (for embeddings, chat, audio transcription, and image captioning)
 
 ## 🛠️ Quick Start
 
@@ -41,11 +43,10 @@ cd backend
 cp .env.example .env  # If .env.example exists
 ```
 
-Add your API keys:
+Add your API key:
 
 ```env
 OPENAI_API_KEY=sk-your-openai-api-key
-HF_API_TOKEN=your-huggingface-token
 ```
 
 ### 3. Start with Docker Compose
@@ -137,7 +138,7 @@ User Query → Backend API → Chroma Search → Hybrid Scoring → LLM → Resp
 - `POST /upload` - Upload files, text, or URLs
 
 ### Query
-- `POST /query` - Query the knowledge base
+- `POST /query` - Query the knowledge base (supports streaming with `stream: true` parameter)
 
 ### Documents
 - `GET /docs` - List all documents
@@ -147,7 +148,12 @@ User Query → Backend API → Chroma Search → Hybrid Scoring → LLM → Resp
 - `GET /conversations` - List conversations
 - `POST /conversations` - Create conversation
 - `GET /conversations/:id` - Get conversation
-- `DELETE /conversations/:id` - Delete conversation
+- `DELETE /conversations/:id` - Delete conversation (moves to trash)
+
+### Trash
+- `GET /trash` - List trashed items
+- `POST /trash/restore/:itemId` - Restore a trashed item
+- `DELETE /trash/:itemId` - Permanently delete from trash
 
 ### Health
 - `GET /health` - Health check
@@ -184,6 +190,24 @@ User Query → Backend API → Chroma Search → Hybrid Scoring → LLM → Resp
 ## 📚 Documentation
 
 - **System Design**: See [SYSTEM_DESIGN_COMPREHENSIVE.md](./SYSTEM_DESIGN_COMPREHENSIVE.md) for detailed architecture documentation
+- **Video Walkthrough**: See [VIDEO_WALKTHROUGH_GUIDE.md](./VIDEO_WALKTHROUGH_GUIDE.md) for a complete walkthrough script
+
+## 💬 Streaming Responses
+
+The chat interface uses **token-by-token streaming** for a more responsive experience:
+
+- **Immediate Start**: Responses begin appearing within 1-2 seconds
+- **Word-by-Word Display**: Text streams in real-time (like ChatGPT)
+- **Stop/Regenerate**: Cancel generation or get a fresh response
+- **Source Citations**: Clickable links to referenced documents
+- **Technical**: Uses Server-Sent Events (SSE) for real-time delivery
+
+### How It Works:
+1. Frontend sends query with `stream: true`
+2. Backend retrieves relevant context using hybrid retrieval
+3. Response streams token-by-token via SSE
+4. Frontend updates UI in real-time as tokens arrive
+5. Sources are sent first, then content chunks, then completion signal
 
 ## 🔒 Security & Privacy
 
@@ -221,8 +245,7 @@ This project is private and proprietary.
 
 ## 🙏 Acknowledgments
 
-- OpenAI for embeddings and chat APIs
-- HuggingFace for BLIP image captioning
+- OpenAI for embeddings, chat APIs, Whisper (audio), and Vision API (images)
 - ChromaDB for vector storage
 - React and Vite communities
 
