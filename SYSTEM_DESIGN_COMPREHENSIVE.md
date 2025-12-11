@@ -769,21 +769,36 @@ Content-Type: application/json
 Body:
 {
   "query": "What did I learn last week?",
-  "conversationId": "uuid" (optional),
-  "k": 5 (optional, default: 5)
+  "userId": "demo-user" (optional, default: "demo-user"),
+  "k": 6 (optional, default: 6),
+  "from": "ISO-8601 date" (optional),
+  "to": "ISO-8601 date" (optional),
+  "stream": true (optional, enables streaming)
 }
 
-Response:
+Response (Non-streaming):
 {
   "answer": "Based on your documents...",
   "sources": [
     {
       "docId": "uuid",
       "chunkId": "uuid",
-      "text": "relevant chunk..."
+      "score": 0.95,
+      "filename": "document.pdf",
+      "originalUri": "/app/uploads/file.pdf",
+      "sourceType": "pdf"
     }
   ]
 }
+
+Response (Streaming):
+Content-Type: text/event-stream
+
+data: {"type": "sources", "data": [{"docId": "...", "filename": "...", ...}]}
+data: {"type": "chunk", "data": "token"}
+data: {"type": "chunk", "data": " token"}
+...
+data: {"type": "done", "data": "Full response text"}
 ```
 
 #### Document Management
