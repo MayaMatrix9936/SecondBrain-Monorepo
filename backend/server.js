@@ -47,8 +47,24 @@ const upload = multer({ dest: uploadsDir });
 
 const STORAGE_FILE = path.join(__dirname, 'storage.json');
 if (!fs.existsSync(STORAGE_FILE)) fs.writeFileSync(STORAGE_FILE, JSON.stringify({ docs: [], chunks: [], graph: {nodes:[], edges:[]}, conversations: [], trash: [] }, null, 2));
-function readStorage() { return JSON.parse(fs.readFileSync(STORAGE_FILE, 'utf8')); }
-function writeStorage(obj) { fs.writeFileSync(STORAGE_FILE, JSON.stringify(obj, null, 2)); }
+function readStorage() { 
+  try {
+    const content = fs.readFileSync(STORAGE_FILE, 'utf8');
+    return JSON.parse(content);
+  } catch(e) {
+    console.error('Error reading storage:', e);
+    // Return default structure if file is corrupted
+    return { docs: [], chunks: [], graph: {nodes:[], edges:[]}, conversations: [], trash: [] };
+  }
+}
+function writeStorage(obj) { 
+  try {
+    fs.writeFileSync(STORAGE_FILE, JSON.stringify(obj, null, 2));
+  } catch(e) {
+    console.error('Error writing storage:', e);
+    throw e;
+  }
+}
 
 // Cleanup old trash items (older than 30 days)
 function cleanupTrash(storage) {
@@ -657,7 +673,14 @@ app.post('/upload', upload.single('file'), async (req,res)=>{
     const userId = req.headers['x-user-id'] || 'demo-user';
     const docId = uuidv4(); const now = new Date().toISOString();
     let meta = { docId, userId, uploadedAt: now, processedAt: null, title: req.body.title || null, sourceType: null, originalUri: null, tags: [] };
-    const storage = readStorage();
+    
+    let storage;
+    try {
+      storage = readStorage();
+    } catch(e) {
+      console.error('Failed to read storage:', e);
+      return res.status(500).json({ error:'Failed to read storage', details: e.message });
+    }
     if(req.file){
       console.log('Processing file upload:', req.file.originalname);
       const fname = req.file.originalname; const localPath = req.file.path;
@@ -666,19 +689,37 @@ app.post('/upload', upload.single('file'), async (req,res)=>{
       else if(fname.match(/\.(mp3|m4a|wav|mp4)$/)) sourceType='audio';
       else if(fname.match(/\.(png|jpe?g|webp)$/)) sourceType='image';
       meta.sourceType=sourceType; meta.originalUri=localPath;
-      storage.docs.push(meta); writeStorage(storage);
+      storage.docs.push(meta);
+      try {
+        writeStorage(storage);
+      } catch(e) {
+        console.error('Failed to write storage:', e);
+        return res.status(500).json({ error:'Failed to save document', details: e.message });
+      }
       // Process job asynchronously (no Redis needed)
       processJob({ jobType:'upload_file', docId, userId, localPath, filename: fname, sourceType }).catch(err => console.error('Job processing error:', err));
       return res.json({ ok:true, docId });
     } else if(req.body.text){
       meta.sourceType='text'; meta.originalUri='inline';
-      storage.docs.push(meta); writeStorage(storage);
+      storage.docs.push(meta);
+      try {
+        writeStorage(storage);
+      } catch(e) {
+        console.error('Failed to write storage:', e);
+        return res.status(500).json({ error:'Failed to save document', details: e.message });
+      }
       // Process job asynchronously (no Redis needed)
       processJob({ jobType:'inline_text', docId, userId, text: req.body.text }).catch(err => console.error('Job processing error:', err));
       return res.json({ ok:true, docId });
     } else if(req.body.url){
       meta.sourceType='url'; meta.originalUri = req.body.url;
-      storage.docs.push(meta); writeStorage(storage);
+      storage.docs.push(meta);
+      try {
+        writeStorage(storage);
+      } catch(e) {
+        console.error('Failed to write storage:', e);
+        return res.status(500).json({ error:'Failed to save document', details: e.message });
+      }
       // Process job asynchronously (no Redis needed)
       processJob({ jobType:'ingest_url', docId, userId, url: req.body.url }).catch(err => console.error('Job processing error:', err));
       return res.json({ ok:true, docId });
@@ -688,7 +729,14 @@ app.post('/upload', upload.single('file'), async (req,res)=>{
   } catch(e){ 
     console.error('upload err', e); 
     console.error('upload error details:', e.message, e.stack);
-    res.status(500).json({ error:'upload failed', details: e.message }); 
+    console.error('Request details:', { 
+      hasFile: !!req.file, 
+      fileInfo: req.file ? { name: req.file.originalname, size: req.file.size, path: req.file.path } : null,
+      hasText: !!req.body.text,
+      hasUrl: !!req.body.url,
+      bodyKeys: Object.keys(req.body || {})
+    });
+    res.status(500).json({ error:'upload failed', details: e.message, stack: process.env.NODE_ENV === 'development' ? e.stack : undefined }); 
   }
 });
 
