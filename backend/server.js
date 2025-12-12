@@ -651,33 +651,43 @@ function keywordScore(q, t){
 app.get('/', (req,res)=> res.send('SecondBrain backend v3'));
 app.get('/health', (req,res)=> res.json({ ok:true }));
 
-app.post('/upload', upload.single('file'), async (req,res)=>{
+app.post('/upload', upload.any(), async (req,res)=>{
   try{
-    console.log('Upload request received', { hasFile: !!req.file, hasText: !!req.body.text, hasUrl: !!req.body.url });
+    // Handle both 'files' array and 'file' single upload for backward compatibility
+    const files = req.files || (req.file ? [req.file] : []);
+    console.log('Upload request received', { fileCount: files.length, hasText: !!req.body.text, hasUrl: !!req.body.url });
     const userId = req.headers['x-user-id'] || 'demo-user';
-    const docId = uuidv4(); const now = new Date().toISOString();
-    let meta = { docId, userId, uploadedAt: now, processedAt: null, title: req.body.title || null, sourceType: null, originalUri: null, tags: [] };
+    const now = new Date().toISOString();
     const storage = readStorage();
-    if(req.file){
-      console.log('Processing file upload:', req.file.originalname);
-      const fname = req.file.originalname; const localPath = req.file.path;
-      let sourceType='file';
-      if(fname.toLowerCase().endsWith('.pdf')) sourceType='pdf';
-      else if(fname.match(/\.(mp3|m4a|wav|mp4)$/)) sourceType='audio';
-      else if(fname.match(/\.(png|jpe?g|webp)$/)) sourceType='image';
-      meta.sourceType=sourceType; meta.originalUri=localPath;
-      storage.docs.push(meta); writeStorage(storage);
-      // Process job asynchronously (no Redis needed)
-      processJob({ jobType:'upload_file', docId, userId, localPath, filename: fname, sourceType }).catch(err => console.error('Job processing error:', err));
-      return res.json({ ok:true, docId });
+    const docIds = [];
+    
+    if(files && files.length > 0){
+      console.log(`Processing ${files.length} file upload(s)`);
+      for(const file of files){
+        const docId = uuidv4();
+        const fname = file.originalname; const localPath = file.path;
+        let sourceType='file';
+        if(fname.toLowerCase().endsWith('.pdf')) sourceType='pdf';
+        else if(fname.match(/\.(mp3|m4a|wav|mp4)$/)) sourceType='audio';
+        else if(fname.match(/\.(png|jpe?g|webp)$/)) sourceType='image';
+        const meta = { docId, userId, uploadedAt: now, processedAt: null, title: req.body.title || null, sourceType, originalUri: localPath, tags: [] };
+        storage.docs.push(meta);
+        docIds.push(docId);
+        // Process job asynchronously (no Redis needed)
+        processJob({ jobType:'upload_file', docId, userId, localPath, filename: fname, sourceType }).catch(err => console.error('Job processing error:', err));
+      }
+      writeStorage(storage);
+      return res.json({ ok:true, docIds, count: files.length });
     } else if(req.body.text){
-      meta.sourceType='text'; meta.originalUri='inline';
+      const docId = uuidv4();
+      const meta = { docId, userId, uploadedAt: now, processedAt: null, title: req.body.title || null, sourceType: 'text', originalUri: 'inline', tags: [] };
       storage.docs.push(meta); writeStorage(storage);
       // Process job asynchronously (no Redis needed)
       processJob({ jobType:'inline_text', docId, userId, text: req.body.text }).catch(err => console.error('Job processing error:', err));
       return res.json({ ok:true, docId });
     } else if(req.body.url){
-      meta.sourceType='url'; meta.originalUri = req.body.url;
+      const docId = uuidv4();
+      const meta = { docId, userId, uploadedAt: now, processedAt: null, title: req.body.title || null, sourceType: 'url', originalUri: req.body.url, tags: [] };
       storage.docs.push(meta); writeStorage(storage);
       // Process job asynchronously (no Redis needed)
       processJob({ jobType:'ingest_url', docId, userId, url: req.body.url }).catch(err => console.error('Job processing error:', err));
