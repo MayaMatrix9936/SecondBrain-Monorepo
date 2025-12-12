@@ -87,8 +87,8 @@ async function embedTextsBatch(texts){
   }
   
   try {
-    // OpenAI supports up to 2048 inputs per request, but we'll batch in smaller chunks for reliability
-    const batchSize = 200; // Process 200 chunks at a time (increased for faster processing)
+    // OpenAI supports up to 2048 inputs per request - using maximum for fastest processing
+    const batchSize = 2048; // Process up to 2048 chunks at a time (maximum supported by OpenAI)
     const allEmbeddings = [];
     
     for (let i = 0; i < texts.length; i += batchSize) {
