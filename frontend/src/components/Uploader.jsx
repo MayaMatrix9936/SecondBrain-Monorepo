@@ -12,7 +12,7 @@ console.log('APP_CONFIG:', typeof window !== 'undefined' ? window.APP_CONFIG : '
 
 export default function Uploader({ onUploadSuccess }) {
   const [uploadType, setUploadType] = useState('file');
-  const [files, setFiles] = useState([]);
+  const [file, setFile] = useState(null);
   const [text, setText] = useState('');
   const [url, setUrl] = useState('');
   const [uploading, setUploading] = useState(false);
@@ -21,10 +21,8 @@ export default function Uploader({ onUploadSuccess }) {
   const { showSuccess, showError } = useToast();
 
   const handleFileChange = (e) => {
-    if (e.target.files && e.target.files.length > 0) {
-      setFiles(Array.from(e.target.files));
-      setMessage('');
-    }
+    setFile(e.target.files[0]);
+    setMessage('');
   };
 
   const handleSubmit = async (e) => {
@@ -38,15 +36,12 @@ export default function Uploader({ onUploadSuccess }) {
         'x-user-id': 'demo-user'
       };
 
-      if (uploadType === 'file' && files.length > 0) {
-        // Append all files to formData
-        files.forEach(file => {
-          formData.append('files', file);
-        });
-        console.log('Uploading to:', `${API_URL}/upload`, `Files: ${files.length}`); // Debug
+      if (uploadType === 'file' && file) {
+        formData.append('file', file);
+        console.log('Uploading to:', `${API_URL}/upload`); // Debug
         const response = await axios.post(`${API_URL}/upload`, formData, { headers });
-        showSuccess(`${files.length} file(s) uploaded successfully! Processing...`);
-        setFiles([]);
+        showSuccess(`File uploaded successfully! Processing...`);
+        setFile(null);
         setMessage('');
         if (onUploadSuccess) onUploadSuccess();
       } else if (uploadType === 'text' && text.trim()) {
@@ -97,7 +92,7 @@ export default function Uploader({ onUploadSuccess }) {
     e.preventDefault();
     setIsDragging(false);
     if (uploadType === 'file' && e.dataTransfer.files.length > 0) {
-      setFiles(Array.from(e.dataTransfer.files));
+      setFile(e.dataTransfer.files[0]);
       setMessage('');
     }
   };
@@ -143,7 +138,7 @@ export default function Uploader({ onUploadSuccess }) {
         {uploadType === 'file' && (
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              Select Files (PDF, Audio, Image, or Text) - Multiple files supported
+              Select File (PDF, Audio, Image, or Text)
             </label>
             <div
               onDragOver={handleDragOver}
@@ -161,20 +156,13 @@ export default function Uploader({ onUploadSuccess }) {
                 </svg>
                 <div className="flex text-sm text-gray-600 dark:text-gray-400">
                   <label className="relative cursor-pointer rounded-md font-medium text-blue-600 dark:text-blue-400 hover:text-blue-500 dark:hover:text-blue-300">
-                    <span>Upload file(s)</span>
-                    <input type="file" className="sr-only" onChange={handleFileChange} multiple />
+                    <span>Upload a file</span>
+                    <input type="file" className="sr-only" onChange={handleFileChange} />
                   </label>
                   <p className="pl-1">or drag and drop</p>
                 </div>
-                {files.length > 0 && (
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                    {files.length} file(s) selected:
-                    <ul className="list-disc list-inside mt-1">
-                      {files.map((file, idx) => (
-                        <li key={idx}>{file.name}</li>
-                      ))}
-                    </ul>
-                  </div>
+                {file && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">{file.name}</p>
                 )}
               </div>
             </div>
