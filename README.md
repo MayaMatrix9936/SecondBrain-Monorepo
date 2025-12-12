@@ -189,7 +189,6 @@ User Query → Backend API → Chroma Search → Hybrid Scoring → LLM → Resp
 ## 📚 Documentation
 
 - **System Design**: See [SYSTEM_DESIGN_COMPREHENSIVE.md](./SYSTEM_DESIGN_COMPREHENSIVE.md) for detailed architecture documentation
-- **Video Walkthrough**: See [VIDEO_WALKTHROUGH_GUIDE.md](./VIDEO_WALKTHROUGH_GUIDE.md) for a complete walkthrough script
 
 ## 🔒 Security & Privacy
 
