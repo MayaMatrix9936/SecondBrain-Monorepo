@@ -88,7 +88,7 @@ async function embedTextsBatch(texts){
   
   try {
     // OpenAI supports up to 2048 inputs per request, but we'll batch in smaller chunks for reliability
-    const batchSize = 100; // Process 100 chunks at a time
+    const batchSize = 200; // Process 200 chunks at a time (increased for faster processing)
     const allEmbeddings = [];
     
     for (let i = 0; i < texts.length; i += batchSize) {
@@ -484,15 +484,20 @@ async function processJob(jobData) {
       }
       if (chromaItems.length) await chromaUpsert(d.userId, chromaItems);
 
+      // Extract entities asynchronously (don't block processing)
       const entText = (text || '') + (caption ? ('\nCaption:'+caption) : '');
       if(entText.trim().length>50){
-        const ents = await extractEntities(entText);
-        const docNodeId = d.docId;
-        graphAddNode(storage, 'document', docNodeId, doc ? (doc.title||docNodeId):docNodeId);
-        for(const p of ents.people||[]){ const id = `person:${p}`; graphAddNode(storage,'person',id,p); graphAddEdge(storage,docNodeId,id,'mentions_person'); }
-        for(const o of ents.orgs||[]){ const id = `org:${o}`; graphAddNode(storage,'org',id,o); graphAddEdge(storage,docNodeId,id,'mentions_org'); }
-        for(const pr of ents.projects||[]){ const id = `project:${pr}`; graphAddNode(storage,'project',id,pr); graphAddEdge(storage,docNodeId,id,'mentions_project'); }
-        for(const t of ents.tags||[]){ const id = `tag:${t}`; graphAddNode(storage,'tag',id,t); graphAddEdge(storage,docNodeId,id,'has_tag'); }
+        // Run entity extraction in background - don't wait for it
+        extractEntities(entText).then(ents => {
+          const storage2 = readStorage();
+          const docNodeId = d.docId;
+          graphAddNode(storage2, 'document', docNodeId, doc ? (doc.title||docNodeId):docNodeId);
+          for(const p of ents.people||[]){ const id = `person:${p}`; graphAddNode(storage2,'person',id,p); graphAddEdge(storage2,docNodeId,id,'mentions_person'); }
+          for(const o of ents.orgs||[]){ const id = `org:${o}`; graphAddNode(storage2,'org',id,o); graphAddEdge(storage2,docNodeId,id,'mentions_org'); }
+          for(const pr of ents.projects||[]){ const id = `project:${pr}`; graphAddNode(storage2,'project',id,pr); graphAddEdge(storage2,docNodeId,id,'mentions_project'); }
+          for(const t of ents.tags||[]){ const id = `tag:${t}`; graphAddNode(storage2,'tag',id,t); graphAddEdge(storage2,docNodeId,id,'has_tag'); }
+          writeStorage(storage2);
+        }).catch(err => console.error('Entity extraction error (non-blocking):', err));
       }
 
       if(doc) {
